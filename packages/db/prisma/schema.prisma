@@ -6,3 +6,84 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+// ============================================================
+// TENANT & API KEY MODELS
+// ============================================================
+
+model Tenant {
+  id            String   @id @default(uuid())
+  name          String
+  slug          String   @unique
+  status        String   @default("active")
+  baseCurrency  String   @default("EUR")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  apiKeys       TenantApiKey[]
+  config        TenantConfig?
+  tenantUsers   TenantUser[]
+
+  @@map("tenants")
+}
+
+model TenantApiKey {
+  id          String    @id @default(uuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  keyHash     String    @unique
+  keyPrefix   String    @unique
+  scopes      String[]  @default([])
+  status      String    @default("active")
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([tenantId])
+  @@map("tenant_api_keys")
+}
+
+model TenantConfig {
+  tenantId          String   @id
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rewardConfig      Json     @default("{}")
+  promoterConfig    Json     @default("{}")
+  fraudConfig       Json     @default("{}")
+  webhookConfig     Json     @default("{}")
+  updatedAt         DateTime @updatedAt
+
+  @@map("tenant_configs")
+}
+
+// ============================================================
+// IDENTITY MODELS
+// ============================================================
+
+model User {
+  id              String       @id @default(uuid())
+  emailNormalized String       @unique
+  emailVerified   Boolean      @default(false)
+  status          String       @default("active")
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  tenantUsers     TenantUser[]
+
+  @@map("users")
+}
+
+model TenantUser {
+  id             String   @id @default(uuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  externalUserId String
+  username       String?
+  tenantStatus   String   @default("active")
+  joinedAt       DateTime @default(now())
+  metadata       Json     @default("{}")
+
+  @@unique([tenantId, externalUserId])
+  @@index([userId])
+  @@map("tenant_users")
+}
