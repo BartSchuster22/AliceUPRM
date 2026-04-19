@@ -1,0 +1,101 @@
+name: uprm
+
+networks:
+  uprm_net:
+    name: uprm_net
+    driver: bridge
+
+volumes:
+  uprm_pg_data:
+  uprm_redis_data:
+  uprm_rabbitmq_data:
+  uprm_minio_data:
+  uprm_prom_data:
+  uprm_grafana_data:
+  uprm_loki_data:
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - uprm_pg_data:/var/lib/postgresql/data
+    ports:
+      - '127.0.0.1:5432:5432'
+    networks: [uprm_net]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--requirepass', '${REDIS_PASSWORD}', '--appendonly', 'yes']
+    volumes:
+      - uprm_redis_data:/data
+    ports:
+      - '127.0.0.1:6379:6379'
+    networks: [uprm_net]
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - uprm_rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - '127.0.0.1:5672:5672'
+      - '127.0.0.1:15672:15672'
+    networks: [uprm_net]
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+    volumes:
+      - uprm_minio_data:/data
+    ports:
+      - '127.0.0.1:9000:9000'
+      - '127.0.0.1:9001:9001'
+    networks: [uprm_net]
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - uprm_prom_data:/prometheus
+    ports:
+      - '127.0.0.1:9090:9090'
+    networks: [uprm_net]
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+    volumes:
+      - uprm_grafana_data:/var/lib/grafana
+    ports:
+      - '127.0.0.1:3001:3000'
+    networks: [uprm_net]
+
+  loki:
+    image: grafana/loki:latest
+    restart: unless-stopped
+    volumes:
+      - uprm_loki_data:/loki
+    ports:
+      - '127.0.0.1:3100:3100'
+    networks: [uprm_net]

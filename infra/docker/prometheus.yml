@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: 'uprm-api-core'
+    static_configs:
+      - targets: ['host.docker.internal:4000']
+  - job_name: 'uprm-admin-api'
+    static_configs:
+      - targets: ['host.docker.internal:4001']
+  - job_name: 'uprm-worker'
+    static_configs:
+      - targets: ['host.docker.internal:4002']
