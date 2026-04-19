@@ -23,7 +23,7 @@ importers:
         specifier: ^3.3.0
         version: 3.8.3
       typescript:
-        specifier: ^5.5.0
+        specifier: 5.9.3
         version: 5.9.3
 
   apps/admin-api:
@@ -408,6 +408,22 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+
+  packages/domain/identity:
+    dependencies:
+      '@uprm/db':
+        specifier: workspace:*
+        version: link:../../db
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.4
+        version: 4.1.4(@types/node@25.6.0)(vite@8.0.8(@types/node@25.6.0)(jiti@2.6.1)(terser@5.46.1)(yaml@2.8.3))
 
   packages/domain/tenants:
     dependencies:

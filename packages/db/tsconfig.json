@@ -9,7 +9,7 @@
     "sourceMap": true,
     "noEmit": false,
     "module": "CommonJS",
-    "moduleResolution": "Node"
+    "moduleResolution": "Node10"
   },
   "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules"]
