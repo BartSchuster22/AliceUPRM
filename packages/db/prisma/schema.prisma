@@ -87,3 +87,49 @@ model TenantUser {
   @@index([userId])
   @@map("tenant_users")
 }
+
+
+// ============================================================
+// REFERRAL GRAPH MODELS
+// ============================================================
+
+model ReferralCode {
+  id            String    @id @default(uuid())
+  tenantId      String
+  tenantUserId  String
+  code          String
+  status        String    @default("active")
+  createdAt     DateTime  @default(now())
+  expiresAt     DateTime?
+
+  @@unique([tenantId, code])
+  @@index([tenantUserId])
+  @@map("referral_codes")
+}
+
+model ReferralEdge {
+  id                       String    @id @default(uuid())
+  tenantId                 String
+  referrerTenantUserId     String
+  referredTenantUserId     String
+  sourceCodeId             String?
+  attributionMethod        String    @default("code")
+  createdAt                DateTime  @default(now())
+  lockedAt                 DateTime?
+
+  @@unique([tenantId, referredTenantUserId])
+  @@index([tenantId, referrerTenantUserId])
+  @@map("referral_edges")
+}
+
+model ReferralAncestry {
+  tenantId                 String
+  ancestorTenantUserId     String
+  descendantTenantUserId   String
+  depth                    Int
+  createdAt                DateTime  @default(now())
+
+  @@id([tenantId, descendantTenantUserId, ancestorTenantUserId])
+  @@index([tenantId, ancestorTenantUserId])
+  @@map("referral_ancestry")
+}
