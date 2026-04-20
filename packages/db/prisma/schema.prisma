@@ -133,3 +133,58 @@ model ReferralAncestry {
   @@index([tenantId, ancestorTenantUserId])
   @@map("referral_ancestry")
 }
+
+
+// ============================================================
+// EVENT INGESTION MODELS
+// ============================================================
+
+model IngestedEvent {
+  id                 String    @id @default(uuid())
+  tenantId           String
+  eventType          String
+  externalEventId    String
+  externalUserId     String?
+  tenantUserId       String?
+  payload            Json
+  occurredAt         DateTime
+  receivedAt         DateTime  @default(now())
+  idempotencyKey     String
+  processingStatus   String    @default("queued")
+  processingAttempts Int       @default(0)
+  errorCode          String?
+  errorMessage       String?
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, eventType, occurredAt])
+  @@index([processingStatus, receivedAt])
+  @@map("ingested_events")
+}
+
+model OutboxMessage {
+  id           String    @id @default(uuid())
+  aggregateId  String
+  topic        String
+  payload      Json
+  status       String    @default("pending")
+  attempts     Int       @default(0)
+  createdAt    DateTime  @default(now())
+  dispatchedAt DateTime?
+  lastError    String?
+
+  @@index([status, createdAt])
+  @@map("outbox_messages")
+}
+
+model EventLink {
+  id            String   @id @default(uuid())
+  tenantId      String
+  eventId       String
+  linkedEventId String
+  linkType      String
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, eventId])
+  @@index([tenantId, linkedEventId])
+  @@map("event_links")
+}
