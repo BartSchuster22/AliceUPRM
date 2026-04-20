@@ -149,6 +149,9 @@ importers:
       '@uprm/identity':
         specifier: workspace:*
         version: link:../../packages/domain/identity
+      '@uprm/referrals':
+        specifier: workspace:*
+        version: link:../../packages/domain/referrals
       '@uprm/tenants':
         specifier: workspace:*
         version: link:../../packages/domain/tenants
