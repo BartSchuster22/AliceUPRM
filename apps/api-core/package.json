@@ -25,6 +25,7 @@
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@uprm/db": "workspace:*",
+    "@uprm/events": "workspace:*",
     "@uprm/identity": "workspace:*",
     "@uprm/referrals": "workspace:*",
     "@uprm/tenants": "workspace:*",
