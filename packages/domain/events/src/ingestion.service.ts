@@ -97,8 +97,31 @@ export class EventIngestionService {
               },
             });
           }
-          // If the linked event doesn't exist yet, we don't fail — the event processor
-          // will handle the relationship later. Out-of-order arrival is normal.
+        }
+
+        const waitingEvents = await tx.ingestedEvent.findMany({
+          where: {
+            tenantId: input.tenantId,
+            payload: {
+              path: ['linkedExternalEventId'],
+              equals: payload.externalEventId,
+            },
+          },
+          select: {
+            id: true,
+            eventType: true,
+          },
+        });
+
+        for (const waitingEvent of waitingEvents) {
+          await tx.eventLink.create({
+            data: {
+              tenantId: input.tenantId,
+              eventId: waitingEvent.id,
+              linkedEventId: event.id,
+              linkType: deriveLinkType(waitingEvent.eventType),
+            },
+          });
         }
 
         return event;

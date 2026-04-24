@@ -23,6 +23,7 @@ describe('EventIngestionService event links', () => {
           ingestedEvent: {
             create: vi.fn().mockResolvedValue(createdEvent),
             findFirst: vi.fn().mockResolvedValue({ id: 'evt-db-linked' }),
+            findMany: vi.fn().mockResolvedValue([]),
           },
           outboxMessage: {
             create: vi.fn().mockResolvedValue({ id: 'outbox-1' }),
@@ -93,6 +94,73 @@ describe('EventIngestionService event links', () => {
         eventId: 'evt-db-new',
         linkedEventId: 'evt-db-linked',
         linkType: 'chargeback_resolution_of',
+      },
+    ]);
+  });
+
+  it('reconciles out-of-order links when the referenced prior event arrives later', async () => {
+    const tx = {
+      ingestedEvent: {
+        create: vi
+          .fn()
+          .mockResolvedValueOnce({ id: 'evt-db-refund', processingStatus: 'accepted' })
+          .mockResolvedValueOnce({ id: 'evt-db-invoice', processingStatus: 'accepted' }),
+        findFirst: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(null),
+        findMany: vi
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([
+            {
+              id: 'evt-db-refund',
+              eventType: 'refund_issued',
+            },
+          ]),
+      },
+      outboxMessage: {
+        create: vi.fn().mockResolvedValue({ id: 'outbox-1' }),
+      },
+      eventLink: {
+        create: vi.fn().mockImplementation(async ({ data }: any) => {
+          createdLink.push(data);
+          return data;
+        }),
+      },
+    };
+    db.$transaction = vi.fn(async (fn) => fn(tx));
+
+    await svc.ingest({
+      tenantId: 'tenant-1',
+      body: {
+        eventType: 'refund_issued',
+        idempotencyKey: 'stripe:evt_refund_out_of_order',
+        externalEventId: 'evt_refund_out_of_order',
+        externalUserId: 'psi-user-1',
+        linkedExternalEventId: 'evt_invoice_late',
+        amount: '29.99',
+        currency: 'EUR',
+        reason: 'requested_by_customer',
+      },
+    });
+
+    await svc.ingest({
+      tenantId: 'tenant-1',
+      body: {
+        eventType: 'invoice_paid',
+        idempotencyKey: 'stripe:evt_invoice_late',
+        externalEventId: 'evt_invoice_late',
+        externalUserId: 'psi-user-1',
+        invoiceId: 'in_late_1',
+        amount: '29.99',
+        currency: 'EUR',
+      },
+    });
+
+    expect(createdLink).toEqual([
+      {
+        tenantId: 'tenant-1',
+        eventId: 'evt-db-refund',
+        linkedEventId: 'evt-db-invoice',
+        linkType: 'refund_of',
       },
     ]);
   });
