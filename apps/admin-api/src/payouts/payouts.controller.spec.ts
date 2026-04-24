@@ -7,8 +7,11 @@ describe('PayoutsController', () => {
     controller = new PayoutsController();
   });
 
-  it('maps approve responses into API shape', async () => {
+  it('maps approve responses into API shape and writes an audit row', async () => {
     (controller as any).svc = {
+      getPayout: jest
+        .fn()
+        .mockResolvedValue({ id: 'po-1', tenantId: 'tenant-1' }),
       approvePayout: jest.fn().mockResolvedValue({
         id: 'po-1',
         tenantId: 'tenant-1',
@@ -21,9 +24,24 @@ describe('PayoutsController', () => {
         status: 'approved',
       }),
     };
+    (controller as any).audit = {
+      write: jest.fn().mockResolvedValue(undefined),
+    };
 
-    const result = await controller.approve('po-1');
+    const result = await controller.approve('po-1', {
+      admin: {
+        adminUserId: 'admin-1',
+        subject: 'oidc|alice',
+        email: 'alice@example.com',
+        displayName: 'Alice',
+        roles: ['tenant_admin'],
+      },
+      method: 'POST',
+      route: { path: '/admin/payouts/:id/approve' },
+      headers: {},
+    } as any);
 
+    expect((controller as any).audit.write).toHaveBeenCalled();
     expect(result).toEqual(
       expect.objectContaining({
         id: 'po-1',

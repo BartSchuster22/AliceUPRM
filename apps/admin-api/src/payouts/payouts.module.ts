@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
-import { BootstrapTokenGuard } from '../auth/bootstrap-token.guard';
+import { AuditModule } from '../audit/audit.module';
+import { AuthModule } from '../auth/auth.module';
 import { PayoutsController } from './payouts.controller';
 
 @Module({
+  imports: [AuthModule, AuditModule],
   controllers: [PayoutsController],
-  providers: [BootstrapTokenGuard],
 })
 export class PayoutsModule {}

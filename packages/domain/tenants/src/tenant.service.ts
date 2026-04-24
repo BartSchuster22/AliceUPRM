@@ -53,6 +53,13 @@ export class TenantService {
     });
   }
 
+  async listTenants(): Promise<any[]> {
+    return this.db.tenant.findMany({
+      include: { config: true },
+      orderBy: [{ createdAt: 'asc' }],
+    });
+  }
+
   async updateConfig(
     tenantId: string,
     input: Partial<{

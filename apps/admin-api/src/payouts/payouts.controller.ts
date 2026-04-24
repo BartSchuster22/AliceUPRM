@@ -5,18 +5,25 @@ import {
   NotFoundException,
   Param,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { PayoutService } from '@uprm/payouts';
-import { BootstrapTokenGuard } from '../auth/bootstrap-token.guard';
+import { AuditService } from '../audit/audit.service';
+import { AdminJwtGuard } from '../auth/admin-jwt.guard';
+import type { AdminRequestLike } from '../auth/admin-auth.types';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
 import { FailPayoutDto } from './dto/fail-payout.dto';
 
 @Controller('admin/payouts')
-@UseGuards(BootstrapTokenGuard)
+@UseGuards(AdminJwtGuard, RolesGuard)
 export class PayoutsController {
   private readonly svc = new PayoutService();
+  private readonly audit = new AuditService();
 
   @Get(':id')
+  @Roles('super_admin', 'tenant_admin', 'support')
   async get(@Param('id') id: string) {
     const payout = await this.svc.getPayout(id);
     if (!payout) throw new NotFoundException('payout not found');
@@ -24,24 +31,69 @@ export class PayoutsController {
   }
 
   @Post(':id/approve')
-  async approve(@Param('id') id: string) {
-    return mapPayout(await this.svc.approvePayout(id));
+  @Roles('super_admin', 'tenant_admin')
+  async approve(@Param('id') id: string, @Req() req: AdminRequestLike) {
+    const before = await this.svc.getPayout(id);
+    const payout = await this.svc.approvePayout(id);
+    const result = mapPayout(payout);
+    await writeAudit(this.audit, req, 'payout.approve', id, before, result);
+    return result;
   }
 
   @Post(':id/send')
-  async send(@Param('id') id: string) {
-    return mapPayout(await this.svc.markSent(id));
+  @Roles('super_admin', 'tenant_admin')
+  async send(@Param('id') id: string, @Req() req: AdminRequestLike) {
+    const before = await this.svc.getPayout(id);
+    const payout = await this.svc.markSent(id);
+    const result = mapPayout(payout);
+    await writeAudit(this.audit, req, 'payout.send', id, before, result);
+    return result;
   }
 
   @Post(':id/fail')
-  async fail(@Param('id') id: string, @Body() dto: FailPayoutDto) {
-    return mapPayout(await this.svc.failPayout(id, dto.reason));
+  @Roles('super_admin', 'tenant_admin')
+  async fail(
+    @Param('id') id: string,
+    @Body() dto: FailPayoutDto,
+    @Req() req: AdminRequestLike,
+  ) {
+    const before = await this.svc.getPayout(id);
+    const payout = await this.svc.failPayout(id, dto.reason);
+    const result = mapPayout(payout);
+    await writeAudit(this.audit, req, 'payout.fail', id, before, result);
+    return result;
   }
 
   @Post(':id/cancel')
-  async cancel(@Param('id') id: string) {
-    return mapPayout(await this.svc.cancelPayout(id));
+  @Roles('super_admin', 'tenant_admin')
+  async cancel(@Param('id') id: string, @Req() req: AdminRequestLike) {
+    const before = await this.svc.getPayout(id);
+    const payout = await this.svc.cancelPayout(id);
+    const result = mapPayout(payout);
+    await writeAudit(this.audit, req, 'payout.cancel', id, before, result);
+    return result;
   }
+}
+
+async function writeAudit(
+  audit: AuditService,
+  req: AdminRequestLike,
+  action: string,
+  payoutId: string,
+  before: any,
+  after: any,
+) {
+  if (!req.admin) return;
+  await audit.write({
+    actor: req.admin,
+    request: req,
+    action,
+    resourceType: 'payout',
+    resourceId: payoutId,
+    tenantId: before?.tenantId ?? after?.tenant_id ?? null,
+    before,
+    after,
+  });
 }
 
 function mapPayout(payout: any) {

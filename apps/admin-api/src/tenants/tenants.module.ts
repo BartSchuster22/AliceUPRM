@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
+import { AuditModule } from '../audit/audit.module';
+import { AuthModule } from '../auth/auth.module';
 import { TenantsController } from './tenants.controller';
-import { BootstrapTokenGuard } from '../auth/bootstrap-token.guard';
 
 @Module({
+  imports: [AuthModule, AuditModule],
   controllers: [TenantsController],
-  providers: [BootstrapTokenGuard],
 })
 export class TenantsModule {}

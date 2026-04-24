@@ -287,3 +287,41 @@ model PayoutRequest {
   @@index([status, createdAt])
   @@map("payout_requests")
 }
+
+model AdminUser {
+  id          String   @id @default(uuid())
+  subject     String   @unique
+  email       String?
+  displayName String?
+  roles       String[] @default([])
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  auditLogs   AuditLog[]
+
+  @@map("admin_users")
+}
+
+model AuditLog {
+  id             String     @id @default(uuid())
+  actorAdminUserId String?
+  actorSubject   String
+  actorEmail     String?
+  actorRoles     String[]   @default([])
+  tenantId       String?
+  route          String
+  method         String
+  action         String
+  resourceType   String
+  resourceId     String?
+  beforeJson     Json?
+  afterJson      Json?
+  createdAt      DateTime   @default(now())
+  adminUser      AdminUser? @relation(fields: [actorAdminUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorAdminUserId, createdAt])
+  @@index([tenantId, createdAt])
+  @@index([resourceType, resourceId, createdAt])
+  @@map("audit_logs")
+}
