@@ -91,6 +91,17 @@ export class RewardConsumer {
     if (!eventId || !tenantId || !eventType) {
       throw new Error('missing required event fields');
     }
+
+    if (eventType === 'refund_issued' || eventType === 'chargeback_opened') {
+      const result = await this.scheduler.compensateForLinkedEvent({
+        tenantId,
+        compensatingEventId: eventId,
+        compensatingEventType: eventType,
+      });
+      this.metrics.skipped += result.skipped;
+      return;
+    }
+
     if (!amount || !currency) {
       this.metrics.skipped++;
       return;

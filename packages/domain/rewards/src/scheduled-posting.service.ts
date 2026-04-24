@@ -13,6 +13,19 @@ export interface ScheduleResult {
   skipped: number;
 }
 
+export interface CompensationInput {
+  tenantId: string;
+  compensatingEventId: string;
+  compensatingEventType: string;
+}
+
+export interface CompensationResult {
+  linked: boolean;
+  cancelled: number;
+  reversed: number;
+  skipped: number;
+}
+
 export class ScheduledPostingService {
   private readonly accounts: AccountService;
   private readonly postings: PostingService;
@@ -134,5 +147,69 @@ export class ScheduledPostingService {
       data: { status: 'cancelled', cancelReason: reason.slice(0, 256) },
     });
     return result.count;
+  }
+
+  /**
+   * Handle a compensating event (refund / chargeback_opened) linked to a prior
+   * reward-triggering event. Pending rewards are cancelled; posted rewards are
+   * reversed via equal-and-opposite ledger entries.
+   */
+  async compensateForLinkedEvent(input: CompensationInput): Promise<CompensationResult> {
+    const link = await this.db.eventLink.findFirst({
+      where: { tenantId: input.tenantId, eventId: input.compensatingEventId },
+    });
+    if (!link) {
+      return { linked: false, cancelled: 0, reversed: 0, skipped: 1 };
+    }
+
+    const cancelled = await this.cancelForEvent(
+      link.linkedEventId,
+      `${input.compensatingEventType}:${input.compensatingEventId}`,
+    );
+
+    const postedRows = await this.db.scheduledPosting.findMany({
+      where: {
+        tenantId: input.tenantId,
+        sourceEventId: link.linkedEventId,
+        status: 'posted',
+        resultEntryId: { not: null },
+      },
+    });
+
+    let reversed = 0;
+    let skipped = 0;
+
+    for (const row of postedRows) {
+      const entry = await this.db.ledgerEntry.findUnique({ where: { id: row.resultEntryId! } });
+      if (!entry) {
+        skipped++;
+        continue;
+      }
+
+      const postings = await this.db.ledgerPosting.findMany({
+        where: { entryId: entry.id },
+      });
+      if (!postings.length) {
+        skipped++;
+        continue;
+      }
+
+      const result = await this.postings.postEntry({
+        tenantId: input.tenantId,
+        currency: entry.currency,
+        description: `Reversal for ${entry.description} due to ${input.compensatingEventType}`,
+        idempotencyKey: `reversal:${input.compensatingEventType}:${input.compensatingEventId}:${row.id}`,
+        sourceEventId: input.compensatingEventId,
+        postings: postings.map((p: any) => ({
+          accountId: p.accountId,
+          amount: -BigInt(p.amount),
+        })),
+      });
+
+      if (result.duplicate) skipped++;
+      else reversed++;
+    }
+
+    return { linked: true, cancelled, reversed, skipped };
   }
 }
