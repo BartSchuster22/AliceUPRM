@@ -40,11 +40,19 @@ export class StripeWebhooksController {
       ? req.rawBody
       : Buffer.from(JSON.stringify(req.body ?? {}));
 
-    const normalized = await this.payments.constructAndNormalize({
-      rawBody,
-      signature,
-      webhookSecret: stripeConfig.webhookSecret,
-    });
+    let normalized;
+    try {
+      normalized = await this.payments.constructAndNormalize({
+        rawBody,
+        signature,
+        webhookSecret: stripeConfig.webhookSecret,
+      });
+    } catch (error: any) {
+      if (error?.type === 'StripeSignatureVerificationError') {
+        throw new BadRequestException('invalid stripe signature');
+      }
+      throw error;
+    }
 
     if (!normalized) {
       return { ignored: true };

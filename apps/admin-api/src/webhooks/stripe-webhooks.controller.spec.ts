@@ -135,4 +135,31 @@ describe('StripeWebhooksController', () => {
     expect((controller as any).events.ingest).not.toHaveBeenCalled();
     expect(result).toEqual({ ignored: true });
   });
+
+  it('returns BadRequestException for invalid Stripe signatures', async () => {
+    (controller as any).tenants = {
+      getTenant: jest.fn().mockResolvedValue({
+        id: 'tenant-1',
+        config: {
+          webhookConfig: {
+            stripe: { enabled: true, webhookSecret: 'whsec_test' },
+          },
+        },
+      }),
+    };
+    (controller as any).payments = {
+      constructAndNormalize: jest.fn().mockRejectedValue(
+        Object.assign(new Error('signature mismatch'), {
+          type: 'StripeSignatureVerificationError',
+        }),
+      ),
+    };
+
+    await expect(
+      controller.handle('tenant-1', {
+        headers: { 'stripe-signature': 'sig_bad' },
+        rawBody: Buffer.from('{}'),
+      } as any),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
 });
