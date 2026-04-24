@@ -1,7 +1,32 @@
 import { useEffect, useMemo, useState } from 'react';
-import { fetchTenants, login, type TenantRecord } from './api';
+import {
+  createManualAdjustment,
+  fetchFraudCases,
+  fetchLedger,
+  fetchPromoterApplications,
+  fetchReferralTree,
+  fetchSettlementCycles,
+  fetchTenants,
+  fetchUserDetail,
+  fetchUsers,
+  login,
+  updateTenantConfig,
+  type LedgerRow,
+  type PlaceholderListResponse,
+  type TenantRecord,
+  type TenantUserDetail,
+  type TenantUserSummary,
+} from './api';
 
 type ViewKey = 'tenants' | 'users' | 'wallets' | 'promoters' | 'fraud' | 'settlements';
+
+type ReferralRow = {
+  tenantId: string;
+  ancestorTenantUserId: string;
+  descendantTenantUserId: string;
+  depth: number;
+  createdAt: string;
+};
 
 const NAV_ITEMS: Array<{ key: ViewKey; label: string }> = [
   { key: 'tenants', label: 'Tenants' },
@@ -27,6 +52,28 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pathname, setPathname] = useState(window.location.pathname || DASHBOARD_PATH);
+
+  const [tenantConfigDrafts, setTenantConfigDrafts] = useState({
+    rewardConfig: '{}',
+    promoterConfig: '{}',
+    fraudConfig: '{}',
+  });
+
+  const [userQuery, setUserQuery] = useState('');
+  const [users, setUsers] = useState<TenantUserSummary[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [userDetail, setUserDetail] = useState<TenantUserDetail | null>(null);
+  const [ledger, setLedger] = useState<LedgerRow[]>([]);
+  const [referralTree, setReferralTree] = useState<ReferralRow[]>([]);
+  const [manualAdjustment, setManualAdjustment] = useState({
+    amountMinor: '0',
+    reasonCode: '',
+    note: '',
+  });
+
+  const [promoterState, setPromoterState] = useState<PlaceholderListResponse | null>(null);
+  const [fraudState, setFraudState] = useState<PlaceholderListResponse | null>(null);
+  const [settlementState, setSettlementState] = useState<PlaceholderListResponse | null>(null);
 
   useEffect(() => {
     const onPopState = () => setPathname(window.location.pathname || DASHBOARD_PATH);
@@ -58,9 +105,41 @@ export default function App() {
     }
   }, [isAuthenticated, pathname]);
 
+  useEffect(() => {
+    if (!token || !selectedTenantId) return;
+    void loadUsers(token, selectedTenantId, userQuery);
+  }, [token, selectedTenantId]);
+
+  useEffect(() => {
+    if (!selectedTenant) return;
+    setTenantConfigDrafts({
+      rewardConfig: prettyJson(selectedTenant.config?.rewardConfig ?? {}),
+      promoterConfig: prettyJson(selectedTenant.config?.promoterConfig ?? {}),
+      fraudConfig: prettyJson(selectedTenant.config?.fraudConfig ?? {}),
+    });
+  }, [selectedTenantId, tenants]);
+
+  useEffect(() => {
+    if (!token) return;
+    if (view === 'promoters') {
+      void loadPromoterState(token);
+    }
+    if (view === 'fraud') {
+      void loadFraudState(token);
+    }
+    if (view === 'settlements') {
+      void loadSettlementState(token);
+    }
+  }, [view, token]);
+
   const selectedTenant = useMemo(
     () => tenants.find((tenant) => tenant.id === selectedTenantId) ?? tenants[0] ?? null,
     [selectedTenantId, tenants],
+  );
+
+  const selectedUser = useMemo(
+    () => users.find((user) => user.id === selectedUserId) ?? users[0] ?? null,
+    [selectedUserId, users],
   );
 
   function navigate(nextPath: string, replace = false) {
@@ -84,12 +163,55 @@ export default function App() {
       setStatus(message);
       setTenants([]);
       setSelectedTenantId('');
-      if (message.includes('401')) {
-        logout();
-      }
+      if (message.includes('401')) logout();
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadUsers(nextToken: string, tenantId: string, query = '') {
+    setLoading(true);
+    setStatus('Loading users…');
+    try {
+      const result = await fetchUsers(nextToken, tenantId, query);
+      setUsers(result);
+      const chosenUserId =
+        selectedUserId && result.some((user) => user.id === selectedUserId)
+          ? selectedUserId
+          : (result[0]?.id ?? '');
+      setSelectedUserId(chosenUserId);
+      if (chosenUserId) {
+        await loadUserContext(nextToken, tenantId, chosenUserId);
+      } else {
+        setUserDetail(null);
+        setLedger([]);
+        setReferralTree([]);
+      }
+      setStatus(
+        result.length ? `Loaded ${result.length} user(s).` : 'No users found for this tenant.',
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Failed to load users.');
+      setUsers([]);
+      setSelectedUserId('');
+      setUserDetail(null);
+      setLedger([]);
+      setReferralTree([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadUserContext(nextToken: string, tenantId: string, tenantUserId: string) {
+    if (!tenantUserId) return;
+    const [detail, ledgerRows, treeRows] = await Promise.all([
+      fetchUserDetail(nextToken, tenantId, tenantUserId),
+      fetchLedger(nextToken, tenantId, tenantUserId),
+      fetchReferralTree(nextToken, tenantId, tenantUserId),
+    ]);
+    setUserDetail(detail);
+    setLedger(ledgerRows);
+    setReferralTree(treeRows as ReferralRow[]);
   }
 
   async function submitLogin() {
@@ -118,10 +240,100 @@ export default function App() {
     setToken('');
     setPassword('');
     setTenants([]);
+    setUsers([]);
+    setUserDetail(null);
+    setLedger([]);
+    setReferralTree([]);
     setSelectedTenantId('');
+    setSelectedUserId('');
     setIsAuthenticated(false);
     setStatus('Signed out.');
     navigate(LOGIN_PATH);
+  }
+
+  async function saveTenantConfig() {
+    if (!token || !selectedTenant) return;
+    setLoading(true);
+    try {
+      const rewardConfig = parseConfigDraft(tenantConfigDrafts.rewardConfig, 'Reward config');
+      const promoterConfig = parseConfigDraft(tenantConfigDrafts.promoterConfig, 'Promoter config');
+      const fraudConfig = parseConfigDraft(tenantConfigDrafts.fraudConfig, 'Fraud config');
+      await updateTenantConfig(token, selectedTenant.id, {
+        rewardConfig,
+        promoterConfig,
+        fraudConfig,
+      });
+      setStatus('Tenant config saved.');
+      await loadTenants(token);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Failed to save tenant config.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleUserSearch() {
+    if (!token || !selectedTenantId) return;
+    await loadUsers(token, selectedTenantId, userQuery);
+  }
+
+  async function selectUserAndLoad(tenantUserId: string) {
+    if (!token || !selectedTenantId) return;
+    setSelectedUserId(tenantUserId);
+    setLoading(true);
+    setStatus('Loading user detail…');
+    try {
+      await loadUserContext(token, selectedTenantId, tenantUserId);
+      setStatus('User detail loaded.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Failed to load user detail.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitManualAdjustment() {
+    if (!token || !selectedTenantId || !selectedUser) return;
+    setLoading(true);
+    try {
+      await createManualAdjustment(token, selectedUser.id, {
+        tenantId: selectedTenantId,
+        amountMinor: manualAdjustment.amountMinor,
+        reasonCode: manualAdjustment.reasonCode,
+        note: manualAdjustment.note,
+      });
+      setStatus('Manual balance adjustment posted.');
+      setManualAdjustment({ amountMinor: '0', reasonCode: '', note: '' });
+      await loadUserContext(token, selectedTenantId, selectedUser.id);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Failed to create manual adjustment.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadPromoterState(nextToken: string) {
+    try {
+      setPromoterState(await fetchPromoterApplications(nextToken));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Failed to load promoter applications.');
+    }
+  }
+
+  async function loadFraudState(nextToken: string) {
+    try {
+      setFraudState(await fetchFraudCases(nextToken));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Failed to load fraud cases.');
+    }
+  }
+
+  async function loadSettlementState(nextToken: string) {
+    try {
+      setSettlementState(await fetchSettlementCycles(nextToken));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Failed to load settlement cycles.');
+    }
   }
 
   if (pathname === LOGIN_PATH || !isAuthenticated) {
@@ -131,7 +343,6 @@ export default function App() {
           <div className="eyebrow">UPRM Admin</div>
           <h1>Login</h1>
           <p className="muted">Sign in to continue to the admin dashboard.</p>
-
           <label className="field">
             <span>Email</span>
             <input
@@ -141,7 +352,6 @@ export default function App() {
               type="email"
             />
           </label>
-
           <label className="field">
             <span>Password</span>
             <input
@@ -150,17 +360,13 @@ export default function App() {
               placeholder="Enter your admin password"
               type="password"
               onKeyDown={(event) => {
-                if (event.key === 'Enter' && !loading) {
-                  void submitLogin();
-                }
+                if (event.key === 'Enter' && !loading) void submitLogin();
               }}
             />
           </label>
-
           <button className="primary" onClick={() => void submitLogin()} disabled={loading}>
             Sign in
           </button>
-
           <p className="muted status-text">{status}</p>
         </section>
       </main>
@@ -231,7 +437,7 @@ export default function App() {
           </button>
         </header>
 
-        {view === 'tenants' ? (
+        {view === 'tenants' && (
           <section className="panel-grid">
             <section className="panel">
               <h3>Tenant directory</h3>
@@ -255,49 +461,281 @@ export default function App() {
             </section>
 
             <section className="panel">
-              <h3>Selected tenant</h3>
+              <h3>Tenant config editor</h3>
               {selectedTenant ? (
                 <>
-                  <dl className="detail-list">
-                    <div>
-                      <dt>ID</dt>
-                      <dd>{selectedTenant.id}</dd>
-                    </div>
-                    <div>
-                      <dt>Name</dt>
-                      <dd>{selectedTenant.name}</dd>
-                    </div>
-                    <div>
-                      <dt>Slug</dt>
-                      <dd>{selectedTenant.slug}</dd>
-                    </div>
-                    <div>
-                      <dt>Status</dt>
-                      <dd>{selectedTenant.status}</dd>
-                    </div>
-                    <div>
-                      <dt>Base currency</dt>
-                      <dd>{selectedTenant.baseCurrency}</dd>
-                    </div>
-                  </dl>
-                  <h4>Config JSON</h4>
-                  <pre>{JSON.stringify(selectedTenant.config ?? {}, null, 2)}</pre>
+                  <label className="field">
+                    <span>Reward config JSON</span>
+                    <textarea
+                      value={tenantConfigDrafts.rewardConfig}
+                      rows={8}
+                      onChange={(event) =>
+                        setTenantConfigDrafts((current) => ({
+                          ...current,
+                          rewardConfig: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Promoter config JSON</span>
+                    <textarea
+                      value={tenantConfigDrafts.promoterConfig}
+                      rows={6}
+                      onChange={(event) =>
+                        setTenantConfigDrafts((current) => ({
+                          ...current,
+                          promoterConfig: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Fraud config JSON</span>
+                    <textarea
+                      value={tenantConfigDrafts.fraudConfig}
+                      rows={6}
+                      onChange={(event) =>
+                        setTenantConfigDrafts((current) => ({
+                          ...current,
+                          fraudConfig: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <button
+                    className="primary"
+                    onClick={() => void saveTenantConfig()}
+                    disabled={loading}
+                  >
+                    Save config
+                  </button>
                 </>
               ) : (
                 <p className="muted">No tenant selected.</p>
               )}
             </section>
           </section>
-        ) : (
-          <section className="panel">
-            <h3>{NAV_ITEMS.find((item) => item.key === view)?.label}</h3>
-            <p>
-              This Phase 8 screen shell is in place. The next backend/API slices will fill this page
-              with live UPRM data and mutations.
-            </p>
+        )}
+
+        {view === 'users' && (
+          <section className="panel-grid panel-grid-wide">
+            <section className="panel">
+              <h3>User search</h3>
+              <div className="toolbar-inline">
+                <input
+                  value={userQuery}
+                  onChange={(event) => setUserQuery(event.target.value)}
+                  placeholder="Search by email, username, or external user id"
+                />
+                <button
+                  className="secondary"
+                  onClick={() => void handleUserSearch()}
+                  disabled={!selectedTenantId || loading}
+                >
+                  Search
+                </button>
+              </div>
+              <ul className="tenant-list compact-list">
+                {users.map((user) => (
+                  <li key={user.id}>
+                    <button
+                      className={
+                        user.id === selectedUser?.id ? 'tenant-button active' : 'tenant-button'
+                      }
+                      onClick={() => void selectUserAndLoad(user.id)}
+                    >
+                      <span>{user.email || user.external_user_id}</span>
+                      <small>
+                        {user.username || 'no username'} · {user.external_user_id}
+                      </small>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            <section className="panel">
+              <h3>User detail</h3>
+              {userDetail ? (
+                <>
+                  <dl className="detail-list">
+                    <div>
+                      <dt>Email</dt>
+                      <dd>{userDetail.tenant_user.email || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>External user id</dt>
+                      <dd>{userDetail.tenant_user.external_user_id}</dd>
+                    </div>
+                    <div>
+                      <dt>Username</dt>
+                      <dd>{userDetail.tenant_user.username || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Status</dt>
+                      <dd>{userDetail.tenant_user.tenant_status}</dd>
+                    </div>
+                    <div>
+                      <dt>Joined</dt>
+                      <dd>{formatDate(userDetail.tenant_user.joined_at)}</dd>
+                    </div>
+                    <div>
+                      <dt>Wallet</dt>
+                      <dd>
+                        {userDetail.balance
+                          ? `${userDetail.balance.display_balance_minor} ${userDetail.balance.currency}`
+                          : 'No balance yet'}
+                      </dd>
+                    </div>
+                  </dl>
+                  <h4>Referral tree</h4>
+                  {referralTree.length ? (
+                    <ul className="data-list">
+                      {referralTree.map((row) => (
+                        <li
+                          key={`${row.ancestorTenantUserId}-${row.descendantTenantUserId}-${row.depth}`}
+                        >
+                          depth {row.depth}: {row.ancestorTenantUserId} →{' '}
+                          {row.descendantTenantUserId}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted">No referral tree rows for this user.</p>
+                  )}
+                  <h4>Promoter history</h4>
+                  <p className="muted">
+                    Promoter history is not available yet because promoter profile/history tables do
+                    not exist in the current UPRM domain.
+                  </p>
+                </>
+              ) : (
+                <p className="muted">Select a user to inspect details.</p>
+              )}
+            </section>
           </section>
         )}
+
+        {view === 'wallets' && (
+          <section className="panel-grid panel-grid-wide">
+            <section className="panel">
+              <h3>Manual balance adjustment</h3>
+              {selectedUser ? (
+                <>
+                  <p className="muted">
+                    Selected user: {selectedUser.email || selectedUser.external_user_id}
+                  </p>
+                  <label className="field">
+                    <span>Amount minor</span>
+                    <input
+                      value={manualAdjustment.amountMinor}
+                      onChange={(event) =>
+                        setManualAdjustment((current) => ({
+                          ...current,
+                          amountMinor: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Reason code</span>
+                    <input
+                      value={manualAdjustment.reasonCode}
+                      onChange={(event) =>
+                        setManualAdjustment((current) => ({
+                          ...current,
+                          reasonCode: event.target.value,
+                        }))
+                      }
+                      placeholder="support_bonus / correction / promo_credit"
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Note</span>
+                    <input
+                      value={manualAdjustment.note}
+                      onChange={(event) =>
+                        setManualAdjustment((current) => ({ ...current, note: event.target.value }))
+                      }
+                      placeholder="Optional note"
+                    />
+                  </label>
+                  <button
+                    className="primary"
+                    onClick={() => void submitManualAdjustment()}
+                    disabled={loading || !manualAdjustment.reasonCode.trim()}
+                  >
+                    Post manual adjustment
+                  </button>
+                </>
+              ) : (
+                <p className="muted">Select a user from the Users page first.</p>
+              )}
+            </section>
+
+            <section className="panel">
+              <h3>Ledger statement</h3>
+              {ledger.length ? (
+                <ul className="data-list">
+                  {ledger.map((row) => (
+                    <li key={row.posting_id}>
+                      <strong>
+                        {row.amount_minor} {row.currency}
+                      </strong>{' '}
+                      · {row.account_type}
+                      <br />
+                      <span className="muted">
+                        {row.description} · {formatDate(row.created_at)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted">No ledger postings for the selected user yet.</p>
+              )}
+            </section>
+          </section>
+        )}
+
+        {view === 'promoters' && renderPlaceholderPanel('Promoter applications', promoterState)}
+        {view === 'fraud' && renderPlaceholderPanel('Fraud cases', fraudState)}
+        {view === 'settlements' && renderPlaceholderPanel('Settlement cycles', settlementState)}
       </main>
     </div>
   );
+}
+
+function renderPlaceholderPanel(title: string, state: PlaceholderListResponse | null) {
+  return (
+    <section className="panel">
+      <h3>{title}</h3>
+      <p className="muted">{state?.message || 'Loading…'}</p>
+      <p className="muted">
+        This screen is wired and reachable, but the underlying domain is not implemented in the
+        current UPRM backend yet.
+      </p>
+    </section>
+  );
+}
+
+function parseConfigDraft(raw: string, label: string) {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+      throw new Error(`${label} must be a JSON object.`);
+    }
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes(label)) throw error;
+    throw new Error(`${label} is not valid JSON.`);
+  }
+}
+
+function prettyJson(value: unknown) {
+  return JSON.stringify(value ?? {}, null, 2);
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleString();
 }

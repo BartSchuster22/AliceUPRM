@@ -4,10 +4,14 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuditModule } from './audit/audit.module';
-import { BootstrapModule } from './bootstrap/bootstrap.module';
 import { AuthModule } from './auth/auth.module';
-import { TenantsModule } from './tenants/tenants.module';
+import { BootstrapModule } from './bootstrap/bootstrap.module';
+import { FraudModule } from './fraud/fraud.module';
 import { PayoutsModule } from './payouts/payouts.module';
+import { PromotersModule } from './promoters/promoters.module';
+import { SettlementsModule } from './settlements/settlements.module';
+import { TenantsModule } from './tenants/tenants.module';
+import { UsersModule } from './users/users.module';
 import { StripeWebhooksModule } from './webhooks/stripe-webhooks.module';
 
 @Module({
@@ -17,7 +21,11 @@ import { StripeWebhooksModule } from './webhooks/stripe-webhooks.module';
     AuditModule,
     BootstrapModule,
     TenantsModule,
+    UsersModule,
     PayoutsModule,
+    PromotersModule,
+    FraudModule,
+    SettlementsModule,
     StripeWebhooksModule,
   ],
   controllers: [AppController],

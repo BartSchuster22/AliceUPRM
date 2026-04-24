@@ -187,6 +187,10 @@ input {
   gap: 20px;
 }
 
+.panel-grid-wide {
+  grid-template-columns: minmax(300px, 0.9fr) minmax(420px, 1.1fr);
+}
+
 .panel {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -204,6 +208,32 @@ input {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.compact-list {
+  max-height: 520px;
+  overflow: auto;
+}
+
+.toolbar-inline {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.data-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.data-list li {
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .tenant-button span,
@@ -248,7 +278,11 @@ pre {
     grid-template-columns: 1fr;
   }
 
-  .panel-grid {
+  .panel-grid,
+  .panel-grid-wide,
+  .toolbar-inline {
     grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
   }
 }

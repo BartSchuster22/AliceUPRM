@@ -15,6 +15,7 @@ import type { AdminRequestLike } from '../auth/admin-auth.types';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CreateTenantDto } from './dto/create-tenant.dto';
+import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
 import { UpdateTenantWebhookConfigDto } from './dto/update-tenant-webhook-config.dto';
 
 @Controller('admin/tenants')
@@ -73,6 +74,45 @@ export class TenantsController {
     const t = await this.svc.getTenant(id);
     if (!t) throw new NotFoundException('tenant not found');
     return t;
+  }
+
+  @Post(':id/config')
+  @Roles('super_admin', 'tenant_admin')
+  async updateConfig(
+    @Param('id') id: string,
+    @Body() dto: UpdateTenantConfigDto,
+    @Req() req: AdminRequestLike,
+  ) {
+    const before = await this.svc.getTenant(id);
+    if (!before) throw new NotFoundException('tenant not found');
+
+    const config = await this.svc.updateConfig(id, {
+      ...(dto.rewardConfig ? { rewardConfig: dto.rewardConfig } : {}),
+      ...(dto.promoterConfig ? { promoterConfig: dto.promoterConfig } : {}),
+      ...(dto.fraudConfig ? { fraudConfig: dto.fraudConfig } : {}),
+    });
+
+    const result = {
+      tenant_id: config.tenantId,
+      reward_config: config.rewardConfig,
+      promoter_config: config.promoterConfig,
+      fraud_config: config.fraudConfig,
+    };
+
+    if (req.admin) {
+      await this.audit.write({
+        actor: req.admin,
+        request: req,
+        action: 'tenant.config.update',
+        resourceType: 'tenant',
+        resourceId: id,
+        tenantId: id,
+        before: before.config,
+        after: result,
+      });
+    }
+
+    return result;
   }
 
   @Post(':id/webhook-config')

@@ -19,6 +19,56 @@ describe('TenantsController webhook config', () => {
     ]);
   });
 
+  it('updates generic tenant config and writes an audit row', async () => {
+    (controller as any).svc = {
+      getTenant: jest.fn().mockResolvedValue({
+        id: 'tenant-1',
+        config: { rewardConfig: { enabled: false } },
+      }),
+      updateConfig: jest.fn().mockResolvedValue({
+        tenantId: 'tenant-1',
+        rewardConfig: { enabled: true },
+        promoterConfig: { minReferrals: 5 },
+        fraudConfig: { threshold: 10 },
+      }),
+    };
+    (controller as any).audit = {
+      write: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const result = await (controller as any).updateConfig(
+      'tenant-1',
+      {
+        rewardConfig: { enabled: true },
+        promoterConfig: { minReferrals: 5 },
+        fraudConfig: { threshold: 10 },
+      },
+      {
+        admin: {
+          adminUserId: 'admin-1',
+          subject: 'local:admin@uprm.local',
+          email: 'admin@uprm.local',
+          displayName: 'Admin',
+          roles: ['super_admin'],
+        },
+        method: 'POST',
+        route: { path: '/admin/tenants/:id/config' },
+        headers: {},
+      },
+    );
+
+    expect((controller as any).svc.updateConfig).toHaveBeenCalled();
+    expect((controller as any).audit.write).toHaveBeenCalled();
+    expect(result).toEqual({
+      tenant_id: 'tenant-1',
+      reward_config: { enabled: true },
+      promoter_config: { minReferrals: 5 },
+      fraud_config: { threshold: 10 },
+    });
+  });
+
+  it('updates Stripe webhook config for a tenant and writes an audit row', async () => {});
+
   it('updates Stripe webhook config for a tenant and writes an audit row', async () => {
     (controller as any).svc = {
       getTenant: jest.fn().mockResolvedValue({

@@ -1,0 +1,165 @@
+import { randomUUID } from 'node:crypto';
+import { prisma } from '@uprm/db';
+import { AccountService, BalanceService, PostingService } from '@uprm/ledger';
+import { PayoutService } from '@uprm/payouts';
+import { ReferralService } from '@uprm/referrals';
+
+export class AdminUsersService {
+  private readonly db = prisma;
+  private readonly balances = new BalanceService(prisma);
+  private readonly accounts = new AccountService(prisma);
+  private readonly postings = new PostingService(prisma);
+  private readonly payouts = new PayoutService(prisma);
+  private readonly referrals = new ReferralService(prisma);
+
+  async listUsers(input: { tenantId: string; q?: string; limit?: number }) {
+    const query = input.q?.trim();
+    return this.db.tenantUser.findMany({
+      where: {
+        tenantId: input.tenantId,
+        OR: query
+          ? [
+              { externalUserId: { contains: query, mode: 'insensitive' } },
+              { username: { contains: query, mode: 'insensitive' } },
+              {
+                user: {
+                  emailNormalized: { contains: query, mode: 'insensitive' },
+                },
+              },
+            ]
+          : undefined,
+      },
+      include: { user: true },
+      orderBy: [{ joinedAt: 'desc' }],
+      take: input.limit ?? 25,
+    });
+  }
+
+  async getUserDetail(tenantId: string, tenantUserId: string) {
+    const tenantUser = await this.db.tenantUser.findFirst({
+      where: { tenantId, id: tenantUserId },
+      include: { user: true },
+    });
+    if (!tenantUser) return null;
+
+    const tenant = await this.db.tenant.findUnique({ where: { id: tenantId } });
+    const baseCurrency = tenant?.baseCurrency ?? 'EUR';
+    const balance = await this.balances.getUserBalance(
+      tenantId,
+      tenantUserId,
+      baseCurrency,
+    );
+    const payouts = await this.payouts.listUserPayouts(tenantId, tenantUserId);
+
+    return {
+      tenantUser,
+      balance,
+      payouts,
+    };
+  }
+
+  async getLedgerStatement(tenantId: string, tenantUserId: string) {
+    const accounts = await this.db.ledgerAccount.findMany({
+      where: { tenantId, tenantUserId },
+      orderBy: [{ currency: 'asc' }, { createdAt: 'asc' }],
+    });
+    const accountIds = accounts.map((account) => account.id);
+    if (!accountIds.length) {
+      return [];
+    }
+
+    const postings = await this.db.ledgerPosting.findMany({
+      where: { accountId: { in: accountIds } },
+      include: {
+        account: true,
+        entry: true,
+      },
+      orderBy: [{ createdAt: 'desc' }],
+      take: 100,
+    });
+
+    return postings.map((posting) => ({
+      postingId: posting.id,
+      createdAt: posting.createdAt,
+      amount: posting.amount,
+      currency: posting.currency,
+      accountId: posting.accountId,
+      accountType: posting.account.accountType,
+      entryId: posting.entryId,
+      description: posting.entry.description,
+      idempotencyKey: posting.entry.idempotencyKey,
+      sourceEventId: posting.entry.sourceEventId,
+    }));
+  }
+
+  async getReferralTree(tenantId: string, tenantUserId: string, depth = 3) {
+    return this.referrals.getReferralTree(tenantId, tenantUserId, depth);
+  }
+
+  async createManualAdjustment(input: {
+    tenantId: string;
+    tenantUserId: string;
+    amountMinor: bigint;
+    currency?: string;
+    reasonCode: string;
+    note?: string;
+  }) {
+    const tenantUser = await this.db.tenantUser.findFirst({
+      where: { tenantId: input.tenantId, id: input.tenantUserId },
+    });
+    if (!tenantUser) {
+      throw new Error('tenant user not found');
+    }
+
+    const tenant = await this.db.tenant.findUnique({
+      where: { id: input.tenantId },
+    });
+    if (!tenant) {
+      throw new Error('tenant not found');
+    }
+
+    const currency = input.currency ?? tenant.baseCurrency;
+    const userBalance = await this.accounts.ensureUserBalanceAccount({
+      tenantId: input.tenantId,
+      tenantUserId: input.tenantUserId,
+      currency,
+    });
+    const expense = await this.accounts.ensureSystemAccount({
+      tenantId: input.tenantId,
+      accountType: 'tenant_reward_expense',
+      currency,
+    });
+
+    const amount = input.amountMinor;
+    const postings =
+      amount >= 0n
+        ? [
+            { accountId: expense.id, amount },
+            { accountId: userBalance.id, amount: -amount },
+          ]
+        : [
+            { accountId: userBalance.id, amount: -amount },
+            { accountId: expense.id, amount },
+          ];
+
+    const description = `manual_adjustment:${input.reasonCode}${input.note ? `:${input.note}` : ''}`;
+    const result = await this.postings.postEntry({
+      tenantId: input.tenantId,
+      currency,
+      description,
+      idempotencyKey: `manual-adjustment:${input.tenantUserId}:${randomUUID()}`,
+      postings,
+    });
+
+    return {
+      entryId: result.id,
+      duplicate: result.duplicate,
+      tenantId: input.tenantId,
+      tenantUserId: input.tenantUserId,
+      amountMinor: input.amountMinor,
+      currency,
+      reasonCode: input.reasonCode,
+      note: input.note ?? null,
+    };
+  }
+}
