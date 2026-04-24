@@ -14,8 +14,8 @@ export class RewardScheduler {
     this.running = true;
     while (this.running) {
       try {
-        const posted = await this.svc.postDueRewards();
-        this.metrics.posted += posted;
+        const result = await this.svc.postDueRewards();
+        this.metrics.posted += result.posted;
         this.metrics.batches++;
       } catch (e: any) {
         console.error('[rewards-scheduler] error:', e?.message ?? e);

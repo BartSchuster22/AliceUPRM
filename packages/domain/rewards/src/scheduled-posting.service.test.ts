@@ -10,9 +10,15 @@ describe('ScheduledPostingService compensating events', () => {
       eventLink: {
         findFirst: vi.fn(),
       },
+      tenantConfig: {
+        findUnique: vi.fn().mockResolvedValue({ webhookConfig: {} }),
+      },
       scheduledPosting: {
         updateMany: vi.fn(),
         findMany: vi.fn(),
+        findUnique: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
       },
       ledgerEntry: {
         findUnique: vi.fn(),
@@ -20,8 +26,127 @@ describe('ScheduledPostingService compensating events', () => {
       ledgerPosting: {
         findMany: vi.fn(),
       },
+      ledgerAccount: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      webhookDelivery: {
+        create: vi.fn(),
+        findMany: vi.fn(),
+        updateMany: vi.fn(),
+        update: vi.fn(),
+        findUnique: vi.fn(),
+      },
+      rewardHold: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
     };
     svc = new ScheduledPostingService(db);
+  });
+
+  it('enqueues reward.created deliveries when subscribed endpoints exist', async () => {
+    db.tenantConfig.findUnique.mockResolvedValue({
+      webhookConfig: {
+        outbound: {
+          enabled: true,
+          endpoints: [
+            {
+              id: 'psi-primary',
+              url: 'https://psi.internal/uprm/webhooks',
+              secret: 'supersecret1',
+              eventTypes: ['reward.created'],
+            },
+          ],
+        },
+      },
+    });
+    db.scheduledPosting.findUnique.mockResolvedValue(null);
+    db.scheduledPosting.create.mockResolvedValue({ id: 'sp-1' });
+
+    (svc as any).accounts = {
+      ensureUserBalanceAccount: vi.fn().mockResolvedValue({ id: 'user-balance-1' }),
+      ensureSystemAccount: vi.fn().mockResolvedValue({ id: 'reward-expense-1' }),
+    };
+
+    const result = await svc.scheduleRewards({
+      event: {
+        tenantId: 'tenant-1',
+        eventId: 'evt-1',
+        eventType: 'subscription_paid',
+        occurredAt: new Date('2026-04-24T18:00:00.000Z'),
+        referredTenantUserId: 'buyer-1',
+        amountMinor: 1000n,
+        currency: 'EUR',
+      },
+      rewards: [
+        {
+          referrerTenantUserId: 'referrer-1',
+          depth: 1,
+          amountMinor: 250n,
+          currency: 'EUR',
+        },
+      ],
+      postAt: new Date('2026-05-08T18:00:00.000Z'),
+    });
+
+    expect(result).toEqual({ scheduled: 1, skipped: 0 });
+    expect(db.webhookDelivery.create).toHaveBeenCalledTimes(1);
+    expect(db.webhookDelivery.create.mock.calls[0][0].data.eventType).toBe('reward.created');
+  });
+
+  it('enqueues reward.approved and wallet.balance.changed when posting due rewards', async () => {
+    db.tenantConfig.findUnique.mockResolvedValue({
+      webhookConfig: {
+        outbound: {
+          enabled: true,
+          endpoints: [
+            {
+              id: 'psi-primary',
+              url: 'https://psi.internal/uprm/webhooks',
+              secret: 'supersecret1',
+              eventTypes: ['reward.approved', 'wallet.balance.changed'],
+            },
+          ],
+        },
+      },
+    });
+    db.scheduledPosting.findMany = vi.fn().mockResolvedValue([
+      {
+        id: 'sp-due-3',
+        tenantId: 'tenant-1',
+        sourceEventId: 'source-evt-3',
+        payload: {
+          currency: 'EUR',
+          description: 'scheduled reward',
+          postings: [
+            { accountId: 'expense', amount: '299' },
+            { accountId: 'balance', amount: '-299' },
+          ],
+        },
+      },
+    ]);
+    db.scheduledPosting.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    db.scheduledPosting.update = vi.fn().mockResolvedValue({ id: 'sp-due-3', status: 'posted' });
+    db.ledgerAccount.findMany.mockResolvedValue([
+      {
+        id: 'balance',
+        tenantId: 'tenant-1',
+        tenantUserId: 'referrer-1',
+        accountType: 'user_balance',
+        currency: 'EUR',
+      },
+    ]);
+
+    const postEntry = vi.fn().mockResolvedValue({ id: 'entry-3', duplicate: false });
+    (svc as any).postings = { postEntry };
+
+    const result = await svc.postDueRewards(new Date('2026-04-24T15:00:00.000Z'));
+
+    expect(result).toEqual({ posted: 1, held: 0 });
+    expect(db.webhookDelivery.create).toHaveBeenCalledTimes(2);
+    const eventTypes = db.webhookDelivery.create.mock.calls
+      .map((call: any[]) => call[0].data.eventType)
+      .sort();
+    expect(eventTypes).toEqual(['reward.approved', 'wallet.balance.changed']);
   });
 
   it('cancels pending scheduled rewards for a linked refund event', async () => {
@@ -48,6 +173,21 @@ describe('ScheduledPostingService compensating events', () => {
   });
 
   it('reverses posted reward entries for a linked chargeback event', async () => {
+    db.tenantConfig.findUnique.mockResolvedValue({
+      webhookConfig: {
+        outbound: {
+          enabled: true,
+          endpoints: [
+            {
+              id: 'psi-primary',
+              url: 'https://psi.internal/uprm/webhooks',
+              secret: 'supersecret1',
+              eventTypes: ['refund.reversed', 'wallet.balance.changed'],
+            },
+          ],
+        },
+      },
+    });
     db.eventLink.findFirst.mockResolvedValue({ linkedEventId: 'source-evt-2' });
     db.scheduledPosting.updateMany.mockResolvedValue({ count: 0 });
     db.scheduledPosting.findMany.mockResolvedValue([
@@ -68,6 +208,15 @@ describe('ScheduledPostingService compensating events', () => {
     db.ledgerPosting.findMany.mockResolvedValue([
       { accountId: 'expense', amount: 299n },
       { accountId: 'balance', amount: -299n },
+    ]);
+    db.ledgerAccount.findMany.mockResolvedValue([
+      {
+        id: 'balance',
+        tenantId: 'tenant-1',
+        tenantUserId: 'referrer-1',
+        accountType: 'user_balance',
+        currency: 'EUR',
+      },
     ]);
 
     const postEntry = vi.fn().mockResolvedValue({ id: 'reversal-1', duplicate: false });
@@ -90,6 +239,7 @@ describe('ScheduledPostingService compensating events', () => {
         { accountId: 'balance', amount: 299n },
       ],
     });
+    expect(db.webhookDelivery.create).toHaveBeenCalledTimes(2);
     expect(result).toEqual({
       linked: true,
       cancelled: 0,
@@ -169,7 +319,8 @@ describe('ScheduledPostingService compensating events', () => {
     ]);
 
     expect(postEntry).toHaveBeenCalledTimes(1);
-    expect(first + second).toBe(1);
+    expect(first.posted + second.posted).toBe(1);
+    expect(first.held + second.held).toBe(0);
   });
 
   it('does not count duplicate ledger postings as newly posted rewards', async () => {
@@ -196,7 +347,7 @@ describe('ScheduledPostingService compensating events', () => {
 
     const result = await svc.postDueRewards(new Date('2026-04-24T15:00:00.000Z'));
 
-    expect(result).toBe(0);
+    expect(result).toEqual({ posted: 0, held: 0 });
     expect(db.scheduledPosting.update).toHaveBeenCalledWith({
       where: { id: 'sp-due-2' },
       data: { status: 'posted', resultEntryId: 'entry-existing' },

@@ -125,15 +125,43 @@ export class TenantsController {
     const before = await this.svc.getTenant(id);
     if (!before) throw new NotFoundException('tenant not found');
 
+    const previousWebhookConfig =
+      before.config &&
+      typeof before.config === 'object' &&
+      'webhookConfig' in before.config
+        ? ((before.config as { webhookConfig?: Record<string, unknown> })
+            .webhookConfig ?? {})
+        : {};
+
+    const nextWebhookConfig = {
+      ...previousWebhookConfig,
+      ...(dto.stripe
+        ? {
+            stripe: {
+              enabled: dto.stripe.enabled,
+              webhookSecret: dto.stripe.webhookSecret,
+              mode: dto.stripe.mode,
+              defaultCurrency: dto.stripe.defaultCurrency,
+            },
+          }
+        : {}),
+      ...(dto.outbound
+        ? {
+            outbound: {
+              enabled: dto.outbound.enabled,
+              endpoints: dto.outbound.endpoints.map((endpoint) => ({
+                id: endpoint.id,
+                url: endpoint.url,
+                secret: endpoint.secret,
+                eventTypes: endpoint.eventTypes,
+              })),
+            },
+          }
+        : {}),
+    };
+
     const config = await this.svc.updateConfig(id, {
-      webhookConfig: {
-        stripe: {
-          enabled: dto.stripe.enabled,
-          webhookSecret: dto.stripe.webhookSecret,
-          mode: dto.stripe.mode,
-          defaultCurrency: dto.stripe.defaultCurrency,
-        },
-      },
+      webhookConfig: nextWebhookConfig,
     });
 
     const result = {

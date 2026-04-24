@@ -67,8 +67,6 @@ describe('TenantsController webhook config', () => {
     });
   });
 
-  it('updates Stripe webhook config for a tenant and writes an audit row', async () => {});
-
   it('updates Stripe webhook config for a tenant and writes an audit row', async () => {
     (controller as any).svc = {
       getTenant: jest.fn().mockResolvedValue({
@@ -141,6 +139,115 @@ describe('TenantsController webhook config', () => {
           defaultCurrency: 'EUR',
         },
       },
+    });
+  });
+
+  it('merges outbound webhook config without clobbering Stripe config', async () => {
+    (controller as any).svc = {
+      getTenant: jest.fn().mockResolvedValue({
+        id: 'tenant-1',
+        config: {
+          webhookConfig: {
+            stripe: {
+              enabled: true,
+              webhookSecret: 'whsec_existing_123',
+              mode: 'live',
+              defaultCurrency: 'EUR',
+            },
+          },
+        },
+      }),
+      updateConfig: jest.fn().mockResolvedValue({
+        tenantId: 'tenant-1',
+        webhookConfig: {
+          stripe: {
+            enabled: true,
+            webhookSecret: 'whsec_existing_123',
+            mode: 'live',
+            defaultCurrency: 'EUR',
+          },
+          outbound: {
+            enabled: true,
+            endpoints: [
+              {
+                id: 'psi-primary',
+                url: 'https://psi.internal/uprm/webhooks',
+                secret: 'supersecret1',
+                eventTypes: ['reward.created', 'wallet.balance.changed'],
+              },
+            ],
+          },
+        },
+      }),
+    };
+    (controller as any).audit = {
+      write: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const result = await (controller as any).updateWebhookConfig(
+      'tenant-1',
+      {
+        outbound: {
+          enabled: true,
+          endpoints: [
+            {
+              id: 'psi-primary',
+              url: 'https://psi.internal/uprm/webhooks',
+              secret: 'supersecret1',
+              eventTypes: ['reward.created', 'wallet.balance.changed'],
+            },
+          ],
+        },
+      },
+      {
+        admin: {
+          adminUserId: 'admin-2',
+          subject: 'local:reviewer',
+          email: 'reviewer@example.com',
+          displayName: 'Reviewer',
+          roles: ['tenant_admin'],
+        },
+        method: 'POST',
+        route: { path: '/admin/tenants/:id/webhook-config' },
+        headers: {},
+      },
+    );
+
+    expect((controller as any).svc.updateConfig).toHaveBeenCalledWith(
+      'tenant-1',
+      {
+        webhookConfig: {
+          stripe: {
+            enabled: true,
+            webhookSecret: 'whsec_existing_123',
+            mode: 'live',
+            defaultCurrency: 'EUR',
+          },
+          outbound: {
+            enabled: true,
+            endpoints: [
+              {
+                id: 'psi-primary',
+                url: 'https://psi.internal/uprm/webhooks',
+                secret: 'supersecret1',
+                eventTypes: ['reward.created', 'wallet.balance.changed'],
+              },
+            ],
+          },
+        },
+      },
+    );
+    expect((controller as any).audit.write).toHaveBeenCalled();
+    expect(result.webhook_config.outbound).toEqual({
+      enabled: true,
+      endpoints: [
+        {
+          id: 'psi-primary',
+          url: 'https://psi.internal/uprm/webhooks',
+          secret: 'supersecret1',
+          eventTypes: ['reward.created', 'wallet.balance.changed'],
+        },
+      ],
     });
   });
 });

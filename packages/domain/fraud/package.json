@@ -1,5 +1,5 @@
 {
-  "name": "@uprm/events",
+  "name": "@uprm/fraud",
   "version": "0.0.1",
   "private": true,
   "main": "dist/index.js",
@@ -11,7 +11,6 @@
   },
   "dependencies": {
     "@uprm/db": "workspace:*",
-    "@uprm/fraud": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {

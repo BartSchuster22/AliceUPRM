@@ -46,6 +46,9 @@ importers:
       '@uprm/events':
         specifier: workspace:*
         version: link:../../packages/domain/events
+      '@uprm/fraud':
+        specifier: workspace:*
+        version: link:../../packages/domain/fraud
       '@uprm/ledger':
         specifier: workspace:*
         version: link:../../packages/domain/ledger
@@ -61,6 +64,9 @@ importers:
       '@uprm/tenants':
         specifier: workspace:*
         version: link:../../packages/domain/tenants
+      '@uprm/webhooks':
+        specifier: workspace:*
+        version: link:../../packages/domain/webhooks
       class-transformer:
         specifier: ^0.5.1
         version: 0.5.1
@@ -416,6 +422,9 @@ importers:
       '@uprm/rewards':
         specifier: workspace:*
         version: link:../../packages/domain/rewards
+      '@uprm/webhooks':
+        specifier: workspace:*
+        version: link:../../packages/domain/webhooks
       amqplib:
         specifier: ^1.0.3
         version: 1.0.3
@@ -519,6 +528,28 @@ importers:
         version: 5.9.3
 
   packages/domain/events:
+    dependencies:
+      '@uprm/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@uprm/fraud':
+        specifier: workspace:*
+        version: link:../fraud
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.4
+        version: 4.1.4(@types/node@25.6.0)(vite@8.0.8(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(terser@5.46.1)(yaml@2.8.3))
+
+  packages/domain/fraud:
     dependencies:
       '@uprm/db':
         specifier: workspace:*
@@ -650,9 +681,15 @@ importers:
       '@uprm/db':
         specifier: workspace:*
         version: link:../../db
+      '@uprm/fraud':
+        specifier: workspace:*
+        version: link:../fraud
       '@uprm/ledger':
         specifier: workspace:*
         version: link:../ledger
+      '@uprm/webhooks':
+        specifier: workspace:*
+        version: link:../webhooks
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -676,6 +713,22 @@ importers:
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
+      vitest:
+        specifier: ^4.1.4
+        version: 4.1.4(@types/node@25.6.0)(vite@8.0.8(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(terser@5.46.1)(yaml@2.8.3))
+
+  packages/domain/webhooks:
+    dependencies:
+      '@uprm/db':
+        specifier: workspace:*
+        version: link:../../db
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
       vitest:
         specifier: ^4.1.4
         version: 4.1.4(@types/node@25.6.0)(vite@8.0.8(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(terser@5.46.1)(yaml@2.8.3))

@@ -33,6 +33,7 @@ export const EVENT_SCHEMAS = {
     plan: z.string().min(1).max(64),
     amount: z.string().regex(/^\d+(\.\d{1,2})?$/),
     currency: z.string().length(3),
+    metadata: z.record(z.string(), z.unknown()).optional(),
   }),
 
   subscription_paid: z.object({
@@ -43,6 +44,7 @@ export const EVENT_SCHEMAS = {
     amount: z.string().regex(/^\d+(\.\d{1,2})?$/),
     currency: z.string().length(3),
     invoiceId: z.string().optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
   }),
 
   invoice_paid: z.object({
@@ -52,6 +54,7 @@ export const EVENT_SCHEMAS = {
     invoiceId: z.string().min(1).max(128),
     amount: z.string().regex(/^\d+(\.\d{1,2})?$/),
     currency: z.string().length(3),
+    metadata: z.record(z.string(), z.unknown()).optional(),
   }),
 
   purchase_completed: z.object({
@@ -61,6 +64,7 @@ export const EVENT_SCHEMAS = {
     purchaseId: z.string().min(1).max(128),
     amount: z.string().regex(/^\d+(\.\d{1,2})?$/),
     currency: z.string().length(3),
+    metadata: z.record(z.string(), z.unknown()).optional(),
   }),
 
   refund_issued: z.object({
@@ -71,6 +75,7 @@ export const EVENT_SCHEMAS = {
     amount: z.string().regex(/^\d+(\.\d{1,2})?$/),
     currency: z.string().length(3),
     reason: z.string().max(256).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
   }),
 
   subscription_cancelled: z.object({

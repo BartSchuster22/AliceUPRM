@@ -17,6 +17,16 @@ describe('EventIngestionService event links', () => {
     db = {
       ingestedEvent: {
         findUnique: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      tenantConfig: {
+        findUnique: vi.fn().mockResolvedValue({ fraudConfig: { enabled: false } }),
+      },
+      tenantUser: {
+        findUnique: vi.fn().mockResolvedValue(null),
+      },
+      referralCode: {
+        findFirst: vi.fn().mockResolvedValue(null),
       },
       $transaction: vi.fn(async (fn) =>
         fn({

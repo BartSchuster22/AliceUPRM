@@ -1,5 +1,7 @@
 import { prisma, PrismaClient } from '@uprm/db';
 import { AccountService, PostingService } from '@uprm/ledger';
+import { FraudService } from '@uprm/fraud';
+import { WebhookDeliveryService } from '@uprm/webhooks';
 import type { ComputedReward, TriggerEvent } from './reward.service';
 
 export interface ScheduleInput {
@@ -11,6 +13,11 @@ export interface ScheduleInput {
 export interface ScheduleResult {
   scheduled: number;
   skipped: number;
+}
+
+export interface PostDueRewardsResult {
+  posted: number;
+  held: number;
 }
 
 export interface CompensationInput {
@@ -29,10 +36,14 @@ export interface CompensationResult {
 export class ScheduledPostingService {
   private readonly accounts: AccountService;
   private readonly postings: PostingService;
+  private readonly fraud: FraudService;
+  private readonly webhooks: WebhookDeliveryService;
 
   constructor(private db: PrismaClient = prisma) {
     this.accounts = new AccountService(db);
     this.postings = new PostingService(db);
+    this.fraud = new FraudService(db);
+    this.webhooks = new WebhookDeliveryService(db);
   }
 
   /**
@@ -73,12 +84,15 @@ export class ScheduledPostingService {
       await this.db.scheduledPosting.create({
         data: {
           tenantId: input.event.tenantId,
+          beneficiaryTenantUserId: reward.referrerTenantUserId,
           sourceEventId: input.event.eventId,
           postAt: input.postAt,
           idempotencyKey,
           payload: {
             description: `L${reward.depth} referral reward for event ${input.event.eventId}`,
             currency: reward.currency,
+            beneficiaryTenantUserId: reward.referrerTenantUserId,
+            rewardDepth: reward.depth,
             postings: [
               { accountId: rewardExpense.id, amount: reward.amountMinor.toString() },
               { accountId: userAccount.id, amount: (-reward.amountMinor).toString() },
@@ -86,6 +100,23 @@ export class ScheduledPostingService {
           } as any,
         },
       });
+
+      await this.enqueueEvent(
+        'reward.created',
+        input.event.tenantId,
+        {
+          scheduledPostingId: idempotencyKey,
+          sourceEventId: input.event.eventId,
+          referredTenantUserId: input.event.referredTenantUserId,
+          beneficiaryTenantUserId: reward.referrerTenantUserId,
+          rewardDepth: reward.depth,
+          amountMinor: reward.amountMinor.toString(),
+          currency: reward.currency,
+          postAt: input.postAt.toISOString(),
+        },
+        input.event.eventId,
+        'uprm.domain.reward.created',
+      );
       scheduled++;
     }
 
@@ -96,7 +127,7 @@ export class ScheduledPostingService {
    * Post all scheduled postings whose postAt is in the past.
    * Returns how many were posted.
    */
-  async postDueRewards(now: Date = new Date()): Promise<number> {
+  async postDueRewards(now: Date = new Date()): Promise<PostDueRewardsResult> {
     const due = await this.db.scheduledPosting.findMany({
       where: { status: 'pending', postAt: { lte: now } },
       orderBy: { postAt: 'asc' },
@@ -104,7 +135,13 @@ export class ScheduledPostingService {
     });
 
     let posted = 0;
+    let held = 0;
     for (const row of due) {
+      const activeHold = await this.fraud.getActiveHoldForScheduledPosting(row.id);
+      if (activeHold) {
+        held++;
+        continue;
+      }
       const claim = await this.db.scheduledPosting.updateMany({
         where: { id: row.id, status: 'pending' },
         data: { status: 'processing' },
@@ -132,6 +169,21 @@ export class ScheduledPostingService {
           data: { status: 'posted', resultEntryId: result.id },
         });
         if (!result.duplicate) {
+          await this.enqueueEvent(
+            'reward.approved',
+            row.tenantId,
+            {
+              scheduledPostingId: row.id,
+              ledgerEntryId: result.id,
+              sourceEventId: row.sourceEventId,
+              currency: payload.currency,
+              description: payload.description,
+            },
+            row.sourceEventId,
+            'uprm.domain.reward.approved',
+          );
+
+          await this.enqueueWalletBalanceChanged(row.tenantId, payload.postings, row.sourceEventId);
           posted++;
         }
       } catch (e: any) {
@@ -145,7 +197,7 @@ export class ScheduledPostingService {
       }
     }
 
-    return posted;
+    return { posted, held };
   }
 
   /**
@@ -217,9 +269,92 @@ export class ScheduledPostingService {
       });
 
       if (result.duplicate) skipped++;
-      else reversed++;
+      else {
+        await this.enqueueEvent(
+          'refund.reversed',
+          input.tenantId,
+          {
+            scheduledPostingId: row.id,
+            compensatingEventId: input.compensatingEventId,
+            compensatingEventType: input.compensatingEventType,
+            originalEntryId: entry.id,
+            reversalEntryId: result.id,
+            currency: entry.currency,
+          },
+          input.compensatingEventId,
+          'uprm.domain.refund.reversed',
+        );
+
+        await this.enqueueWalletBalanceChanged(
+          input.tenantId,
+          postings.map((p: any) => ({
+            accountId: p.accountId,
+            amount: (-BigInt(p.amount)).toString(),
+          })),
+          input.compensatingEventId,
+        );
+        reversed++;
+      }
     }
 
     return { linked: true, cancelled, reversed, skipped };
+  }
+
+  private async enqueueEvent(
+    eventType: 'reward.created' | 'reward.approved' | 'refund.reversed' | 'wallet.balance.changed',
+    tenantId: string,
+    payload: Record<string, unknown>,
+    sourceEventId?: string,
+    sourceTopic?: string,
+  ) {
+    const endpoints = await this.webhooks.getSubscribedEndpoints(tenantId, eventType);
+    if (!endpoints.length) {
+      return 0;
+    }
+
+    return this.webhooks.enqueueForEndpoints(
+      {
+        eventType,
+        tenantId,
+        occurredAt: new Date().toISOString(),
+        payload,
+        ...(sourceEventId ? { sourceEventId } : {}),
+        ...(sourceTopic ? { sourceTopic } : {}),
+      },
+      endpoints,
+    );
+  }
+
+  private async enqueueWalletBalanceChanged(
+    tenantId: string,
+    postingRows: Array<{ accountId: string; amount: string }>,
+    sourceEventId?: string,
+  ) {
+    const impactedAccounts = await this.db.ledgerAccount.findMany({
+      where: {
+        id: { in: postingRows.map((posting) => posting.accountId) },
+        accountType: 'user_balance',
+        tenantUserId: { not: null },
+      },
+    });
+
+    for (const account of impactedAccounts) {
+      const matchingPosting = postingRows.find((posting) => posting.accountId === account.id);
+      if (!matchingPosting || !account.tenantUserId) continue;
+
+      await this.enqueueEvent(
+        'wallet.balance.changed',
+        tenantId,
+        {
+          tenantUserId: account.tenantUserId,
+          accountId: account.id,
+          currency: account.currency,
+          deltaMinor: (-BigInt(matchingPosting.amount)).toString(),
+          accountType: account.accountType,
+        },
+        sourceEventId,
+        'uprm.domain.wallet.balance.changed',
+      );
+    }
   }
 }

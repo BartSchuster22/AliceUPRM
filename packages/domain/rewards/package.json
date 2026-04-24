@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "@uprm/db": "workspace:*",
+    "@uprm/fraud": "workspace:*",
     "@uprm/ledger": "workspace:*",
+    "@uprm/webhooks": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {

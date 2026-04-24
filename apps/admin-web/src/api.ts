@@ -71,6 +71,77 @@ export interface PlaceholderListResponse {
   message: string;
 }
 
+export interface FraudCaseRow {
+  id: string;
+  tenant_id: string;
+  tenant_user_id: string | null;
+  status: string;
+  severity: string;
+  score_total: number;
+  hold_count: number;
+  resolution: string | null;
+  resolution_note: string | null;
+  opened_by_signal_id: string | null;
+  opened_at: string;
+  resolved_at: string | null;
+  threshold_snapshot: Record<string, unknown>;
+}
+
+export interface FraudCaseDetail extends FraudCaseRow {
+  opened_by_signal: {
+    id: string;
+    signalType: string;
+    score: number;
+    severity: string;
+    metadata: Record<string, unknown>;
+    createdAt: string;
+  } | null;
+  reward_holds: Array<{
+    id: string;
+    scheduled_posting_id: string;
+    status: string;
+    reason_code: string;
+    created_at: string;
+    released_at: string | null;
+    rejected_at: string | null;
+  }>;
+  related_signals: Array<{
+    id: string;
+    signal_type: string;
+    score: number;
+    severity: string;
+    metadata: Record<string, unknown>;
+    created_at: string;
+  }>;
+  events: Array<{
+    id: string;
+    actor_type: string;
+    actor_id: string | null;
+    action: string;
+    before_json: Record<string, unknown> | null;
+    after_json: Record<string, unknown> | null;
+    created_at: string;
+  }>;
+}
+
+export interface WebhookDeliveryRow {
+  id: string;
+  tenant_id: string;
+  event_type: string;
+  endpoint_url: string;
+  status: string;
+  attempt_count: number;
+  next_attempt_at: string | null;
+  last_attempt_at: string | null;
+  delivered_at: string | null;
+  last_status_code: number | null;
+  last_error: string | null;
+  source_topic: string | null;
+  source_event_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export async function login(email: string, password: string): Promise<LoginResponse> {
   return request('/auth/login', {
     method: 'POST',
@@ -169,12 +240,56 @@ export async function fetchPromoterApplications(token: string): Promise<Placehol
   return request('/admin/promoter-applications', { headers: authHeaders(token) });
 }
 
-export async function fetchFraudCases(token: string): Promise<PlaceholderListResponse> {
-  return request('/admin/fraud-cases', { headers: authHeaders(token) });
+export async function fetchFraudCases(
+  token: string,
+  filters: { tenantId?: string; status?: string; severity?: string } = {},
+): Promise<FraudCaseRow[]> {
+  const params = new URLSearchParams();
+  if (filters.tenantId) params.set('tenantId', filters.tenantId);
+  if (filters.status) params.set('status', filters.status);
+  if (filters.severity) params.set('severity', filters.severity);
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  return request(`/admin/fraud-cases${suffix}`, { headers: authHeaders(token) });
+}
+
+export async function fetchFraudCaseDetail(token: string, id: string): Promise<FraudCaseDetail> {
+  return request(`/admin/fraud-cases/${id}`, { headers: authHeaders(token) });
+}
+
+export async function resolveFraudCase(
+  token: string,
+  id: string,
+  action: 'allow' | 'reject' | 'escalate',
+  note?: string,
+): Promise<FraudCaseDetail> {
+  return request(`/admin/fraud-cases/${id}/${action}`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(note ? { note } : {}),
+  });
 }
 
 export async function fetchSettlementCycles(token: string): Promise<PlaceholderListResponse> {
   return request('/admin/settlement-cycles', { headers: authHeaders(token) });
+}
+
+export async function fetchWebhookDeliveries(
+  token: string,
+  filters: { tenantId?: string; status?: string; eventType?: string } = {},
+): Promise<WebhookDeliveryRow[]> {
+  const params = new URLSearchParams();
+  if (filters.tenantId) params.set('tenantId', filters.tenantId);
+  if (filters.status) params.set('status', filters.status);
+  if (filters.eventType) params.set('eventType', filters.eventType);
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  return request(`/admin/webhook-deliveries${suffix}`, { headers: authHeaders(token) });
+}
+
+export async function replayWebhookDelivery(token: string, id: string) {
+  return request(`/admin/webhook-deliveries/${id}/replay`, {
+    method: 'POST',
+    headers: authHeaders(token),
+  });
 }
 
 function authHeaders(token: string) {

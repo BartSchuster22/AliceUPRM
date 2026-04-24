@@ -1,5 +1,5 @@
 {
-  "name": "@uprm/events",
+  "name": "@uprm/webhooks",
   "version": "0.0.1",
   "private": true,
   "main": "dist/index.js",
@@ -10,9 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@uprm/db": "workspace:*",
-    "@uprm/fraud": "workspace:*",
-    "zod": "^4.3.6"
+    "@uprm/db": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

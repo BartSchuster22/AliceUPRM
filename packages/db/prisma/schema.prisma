@@ -246,21 +246,23 @@ model LedgerPosting {
 }
 
 model ScheduledPosting {
-  id              String    @id @default(uuid())
-  tenantId        String
-  sourceEventId   String    // event that triggered the scheduling
-  postAt          DateTime  // when the settlement window expires and this becomes eligible
-  status          String    @default("pending") // 'pending' | 'posted' | 'cancelled'
-  idempotencyKey  String
-  payload         Json      // {postings: [{accountId, amount, currency}, ...], description, currency}
-  resultEntryId   String?   // set after successful post
-  cancelReason    String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                    String    @id @default(uuid())
+  tenantId              String
+  beneficiaryTenantUserId String?
+  sourceEventId         String    // event that triggered the scheduling
+  postAt                DateTime  // when the settlement window expires and this becomes eligible
+  status                String    @default("pending") // 'pending' | 'posted' | 'cancelled'
+  idempotencyKey        String
+  payload               Json      // {postings: [{accountId, amount, currency}, ...], description, currency}
+  resultEntryId         String?   // set after successful post
+  cancelReason          String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   @@unique([tenantId, idempotencyKey])
   @@index([status, postAt])
   @@index([sourceEventId])
+  @@index([tenantId, beneficiaryTenantUserId, status])
   @@map("scheduled_postings")
 }
 
@@ -306,24 +308,128 @@ model AdminUser {
 }
 
 model AuditLog {
-  id             String     @id @default(uuid())
+  id               String     @id @default(uuid())
   actorAdminUserId String?
-  actorSubject   String
-  actorEmail     String?
-  actorRoles     String[]   @default([])
-  tenantId       String?
-  route          String
-  method         String
-  action         String
-  resourceType   String
-  resourceId     String?
-  beforeJson     Json?
-  afterJson      Json?
-  createdAt      DateTime   @default(now())
-  adminUser      AdminUser? @relation(fields: [actorAdminUserId], references: [id], onDelete: SetNull)
+  actorSubject     String
+  actorEmail       String?
+  actorRoles       String[]   @default([])
+  tenantId         String?
+  route            String
+  method           String
+  action           String
+  resourceType     String
+  resourceId       String?
+  beforeJson       Json?
+  afterJson        Json?
+  createdAt        DateTime   @default(now())
+  adminUser        AdminUser? @relation(fields: [actorAdminUserId], references: [id], onDelete: SetNull)
 
   @@index([actorAdminUserId, createdAt])
   @@index([tenantId, createdAt])
   @@index([resourceType, resourceId, createdAt])
   @@map("audit_logs")
+}
+
+model WebhookDelivery {
+  id             String   @id @default(uuid())
+  tenantId       String
+  eventType      String
+  endpointUrl    String
+  signingSecret  String
+  payload        Json
+  status         String   @default("pending")
+  attemptCount   Int      @default(0)
+  nextAttemptAt  DateTime @default(now())
+  lastAttemptAt  DateTime?
+  deliveredAt    DateTime?
+  lastStatusCode Int?
+  lastError      String?
+  sourceTopic    String?
+  sourceEventId  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([status, nextAttemptAt])
+  @@index([tenantId, eventType, createdAt])
+  @@map("webhook_deliveries")
+}
+
+model RiskSignal {
+  id            String   @id @default(uuid())
+  tenantId      String
+  tenantUserId  String?
+  signalType    String
+  score         Int
+  severity      String
+  status        String   @default("active")
+  dedupeKey     String?
+  sourceEventId String?
+  metadata      Json     @default("{}")
+  createdAt     DateTime @default(now())
+
+  openedCases   RiskCase[]
+
+  @@index([tenantId, createdAt])
+  @@index([tenantUserId, createdAt])
+  @@index([signalType, createdAt])
+  @@unique([tenantId, dedupeKey])
+  @@map("risk_signals")
+}
+
+model RiskCase {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  tenantUserId        String?
+  status              String   @default("open")
+  severity            String
+  scoreTotal          Int
+  thresholdSnapshot   Json     @default("{}")
+  resolution          String?
+  resolutionNote      String?
+  openedBySignalId    String?
+  openedBySignal      RiskSignal? @relation(fields: [openedBySignalId], references: [id], onDelete: SetNull)
+  openedAt            DateTime @default(now())
+  resolvedAt          DateTime?
+
+  events              RiskCaseEvent[]
+  rewardHolds         RewardHold[]
+
+  @@index([tenantId, status, openedAt])
+  @@index([tenantUserId, status])
+  @@map("risk_cases")
+}
+
+model RiskCaseEvent {
+  id          String   @id @default(uuid())
+  riskCaseId  String
+  riskCase    RiskCase @relation(fields: [riskCaseId], references: [id], onDelete: Cascade)
+  actorType   String
+  actorId     String?
+  action      String
+  beforeJson  Json?
+  afterJson   Json?
+  createdAt   DateTime @default(now())
+
+  @@index([riskCaseId, createdAt])
+  @@map("risk_case_events")
+}
+
+model RewardHold {
+  id                String   @id @default(uuid())
+  tenantId          String
+  tenantUserId      String
+  scheduledPostingId String
+  riskCaseId        String
+  riskCase          RiskCase @relation(fields: [riskCaseId], references: [id], onDelete: Cascade)
+  status            String   @default("active")
+  reasonCode        String
+  createdAt         DateTime @default(now())
+  releasedAt        DateTime?
+  rejectedAt        DateTime?
+
+  @@unique([scheduledPostingId])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantUserId, status])
+  @@map("reward_holds")
 }

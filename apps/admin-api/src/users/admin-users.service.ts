@@ -63,7 +63,7 @@ export class AdminUsersService {
       where: { tenantId, tenantUserId },
       orderBy: [{ currency: 'asc' }, { createdAt: 'asc' }],
     });
-    const accountIds = accounts.map((account) => account.id);
+    const accountIds = accounts.map((account: { id: string }) => account.id);
     if (!accountIds.length) {
       return [];
     }
@@ -78,18 +78,33 @@ export class AdminUsersService {
       take: 100,
     });
 
-    return postings.map((posting) => ({
-      postingId: posting.id,
-      createdAt: posting.createdAt,
-      amount: posting.amount,
-      currency: posting.currency,
-      accountId: posting.accountId,
-      accountType: posting.account.accountType,
-      entryId: posting.entryId,
-      description: posting.entry.description,
-      idempotencyKey: posting.entry.idempotencyKey,
-      sourceEventId: posting.entry.sourceEventId,
-    }));
+    return postings.map(
+      (posting: {
+        id: string;
+        createdAt: Date;
+        amount: bigint;
+        currency: string;
+        accountId: string;
+        entryId: string;
+        account: { accountType: string };
+        entry: {
+          description: string;
+          idempotencyKey: string;
+          sourceEventId: string | null;
+        };
+      }) => ({
+        postingId: posting.id,
+        createdAt: posting.createdAt,
+        amount: posting.amount,
+        currency: posting.currency,
+        accountId: posting.accountId,
+        accountType: posting.account.accountType,
+        entryId: posting.entryId,
+        description: posting.entry.description,
+        idempotencyKey: posting.entry.idempotencyKey,
+        sourceEventId: posting.entry.sourceEventId,
+      }),
+    );
   }
 
   async getReferralTree(tenantId: string, tenantUserId: string, depth = 3) {

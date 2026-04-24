@@ -1,4 +1,5 @@
 import { prisma, PrismaClient } from '@uprm/db';
+import { FraudService, parseFraudConfig } from '@uprm/fraud';
 import { validateEvent, EventValidationError, type EventPayload } from './schemas';
 
 export interface IngestInput {
@@ -13,7 +14,11 @@ export interface IngestResult {
 }
 
 export class EventIngestionService {
-  constructor(private db: PrismaClient = prisma) {}
+  private readonly fraud: FraudService;
+
+  constructor(private db: PrismaClient = prisma) {
+    this.fraud = new FraudService(db);
+  }
 
   /**
    * Ingest an event:
@@ -127,6 +132,8 @@ export class EventIngestionService {
         return event;
       });
 
+      await this.emitFraudSignals(input.tenantId, payload, created.id, occurredAt);
+
       return {
         eventId: created.id,
         processingStatus: created.processingStatus,
@@ -154,6 +161,220 @@ export class EventIngestionService {
       }
       throw e;
     }
+  }
+
+  private async emitFraudSignals(
+    tenantId: string,
+    payload: EventPayload,
+    eventId: string,
+    occurredAt: Date,
+  ): Promise<void> {
+    const tenantConfig = await this.db.tenantConfig.findUnique({ where: { tenantId } });
+    const fraudConfig = parseFraudConfig(tenantConfig?.fraudConfig);
+    if (!fraudConfig.enabled) {
+      return;
+    }
+
+    const metadata = this.getMetadata(payload);
+    const externalUserId = (payload as any).externalUserId as string | undefined;
+    const tenantUserId = externalUserId
+      ? await this.lookupTenantUserId(tenantId, externalUserId)
+      : null;
+
+    if (payload.eventType === 'user_registered') {
+      const referrerExternalUserId = this.pickString(metadata, [
+        'referrerExternalUserId',
+        'referredByExternalUserId',
+      ]);
+      if (externalUserId && referrerExternalUserId && referrerExternalUserId === externalUserId) {
+        await this.fraud.recordSignal({
+          tenantId,
+          tenantUserId,
+          signalType: 'self_referral_attempt',
+          sourceEventId: eventId,
+          metadata: { externalUserId },
+          dedupeKey: `self:${tenantId}:${externalUserId}`,
+          createdAt: occurredAt,
+        });
+      }
+
+      const signupIp = this.pickString(metadata, ['signupIp', 'ip', 'clientIp']);
+      if (signupIp) {
+        const recentRegistrations = await this.db.ingestedEvent.findMany({
+          where: {
+            tenantId,
+            eventType: 'user_registered',
+            occurredAt: {
+              gte: new Date(occurredAt.getTime() - fraudConfig.clusterWindowDays * 86_400_000),
+            },
+          },
+        });
+        const distinctUsers = new Set(
+          recentRegistrations
+            .filter(
+              (row: any) =>
+                this.pickString(this.asRecord(row.payload?.metadata), [
+                  'signupIp',
+                  'ip',
+                  'clientIp',
+                ]) === signupIp,
+            )
+            .map((row: any) => row.externalUserId)
+            .filter(Boolean),
+        );
+        if (distinctUsers.size >= 2) {
+          await this.fraud.recordSignal({
+            tenantId,
+            tenantUserId,
+            signalType: 'same_ip_multiple_signups',
+            sourceEventId: eventId,
+            metadata: { signupIp, distinctUsers: Array.from(distinctUsers) },
+            dedupeKey: `ip:${tenantId}:${externalUserId ?? 'none'}:${signupIp}`,
+            createdAt: occurredAt,
+          });
+        }
+      }
+
+      const referralCode = (payload as any).referralCode as string | undefined;
+      if (referralCode) {
+        const code = await this.db.referralCode.findFirst({
+          where: { tenantId, code: referralCode, status: 'active' },
+        });
+        if (code) {
+          const recentRegistrations = await this.db.ingestedEvent.findMany({
+            where: {
+              tenantId,
+              eventType: 'user_registered',
+              occurredAt: {
+                gte: new Date(occurredAt.getTime() - fraudConfig.velocityWindowMinutes * 60_000),
+              },
+            },
+          });
+          const count = recentRegistrations.filter(
+            (row: any) => (row.payload as any)?.referralCode === referralCode,
+          ).length;
+          if (count >= fraudConfig.velocityReferralCountThreshold) {
+            await this.fraud.recordSignal({
+              tenantId,
+              tenantUserId: code.tenantUserId,
+              signalType: 'referral_velocity',
+              sourceEventId: eventId,
+              metadata: { referralCode, recentReferralCount: count },
+              dedupeKey: `velocity:${tenantId}:${code.tenantUserId}:${referralCode}:${count}`,
+              createdAt: occurredAt,
+            });
+          }
+        }
+      }
+    }
+
+    const paymentFingerprint = this.pickString(metadata, ['paymentFingerprint', 'fingerprint']);
+    if (paymentFingerprint) {
+      const recentEvents = await this.db.ingestedEvent.findMany({
+        where: {
+          tenantId,
+          eventType: {
+            in: [
+              'subscription_started',
+              'subscription_paid',
+              'invoice_paid',
+              'purchase_completed',
+              'refund_issued',
+            ],
+          },
+          occurredAt: {
+            gte: new Date(occurredAt.getTime() - fraudConfig.clusterWindowDays * 86_400_000),
+          },
+        },
+      });
+      const distinctUsers = new Set(
+        recentEvents
+          .filter(
+            (row: any) =>
+              this.pickString(this.asRecord(row.payload?.metadata), [
+                'paymentFingerprint',
+                'fingerprint',
+              ]) === paymentFingerprint,
+          )
+          .map((row: any) => row.externalUserId)
+          .filter(Boolean),
+      );
+      if (distinctUsers.size >= 2) {
+        await this.fraud.recordSignal({
+          tenantId,
+          tenantUserId,
+          signalType: 'same_payment_fingerprint',
+          sourceEventId: eventId,
+          metadata: { paymentFingerprint, distinctUsers: Array.from(distinctUsers) },
+          dedupeKey: `fingerprint:${tenantId}:${externalUserId ?? 'none'}:${paymentFingerprint}`,
+          createdAt: occurredAt,
+        });
+      }
+    }
+
+    if (payload.eventType === 'refund_issued' && externalUserId && tenantUserId) {
+      const recentEvents = await this.db.ingestedEvent.findMany({
+        where: {
+          tenantId,
+          externalUserId,
+          eventType: {
+            in: ['refund_issued', 'invoice_paid', 'purchase_completed', 'subscription_paid'],
+          },
+          occurredAt: {
+            gte: new Date(occurredAt.getTime() - fraudConfig.refundRatioWindowDays * 86_400_000),
+          },
+        },
+      });
+      const refundCount = recentEvents.filter(
+        (row: any) => row.eventType === 'refund_issued',
+      ).length;
+      const purchaseCount = recentEvents.filter(
+        (row: any) => row.eventType !== 'refund_issued',
+      ).length;
+      const ratio = purchaseCount > 0 ? refundCount / purchaseCount : 0;
+      if (purchaseCount > 0 && ratio >= fraudConfig.refundRatioThreshold) {
+        await this.fraud.recordSignal({
+          tenantId,
+          tenantUserId,
+          signalType: 'high_refund_ratio_cluster',
+          sourceEventId: eventId,
+          metadata: { refundCount, purchaseCount, ratio },
+          dedupeKey: `refund-ratio:${tenantId}:${tenantUserId}:${refundCount}:${purchaseCount}`,
+          createdAt: occurredAt,
+        });
+      }
+    }
+  }
+
+  private async lookupTenantUserId(
+    tenantId: string,
+    externalUserId: string,
+  ): Promise<string | null> {
+    const tenantUser = await this.db.tenantUser.findUnique({
+      where: { tenantId_externalUserId: { tenantId, externalUserId } },
+    });
+    return tenantUser?.id ?? null;
+  }
+
+  private getMetadata(payload: EventPayload): Record<string, unknown> {
+    return this.asRecord((payload as any).metadata);
+  }
+
+  private pickString(source: Record<string, unknown>, keys: string[]): string | null {
+    for (const key of keys) {
+      const value = source[key];
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+    return null;
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> {
+    if (!value || Array.isArray(value) || typeof value !== 'object') {
+      return {};
+    }
+    return value as Record<string, unknown>;
   }
 }
 

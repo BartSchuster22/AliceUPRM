@@ -3,6 +3,7 @@ import * as http from 'node:http';
 import { OutboxRelayService, RabbitPublisher } from '@uprm/outbox';
 import { RewardConsumer } from './rewards/reward-consumer';
 import { RewardScheduler } from './rewards/scheduler';
+import { WebhookDispatcher } from './webhooks/webhook-dispatcher';
 
 async function main() {
   const url = process.env.RABBITMQ_URL;
@@ -20,6 +21,9 @@ async function main() {
 
   // Reward scheduler — polls scheduled_postings, posts due ones
   const scheduler = new RewardScheduler();
+
+  // Outbound webhook dispatcher — polls webhook_deliveries and delivers signed callbacks
+  const webhooks = new WebhookDispatcher();
 
   // Metrics + healthz endpoint
   const port = Number(process.env.PORT) || 4002;
@@ -51,6 +55,16 @@ async function main() {
           `uprm_rewards_posted_total ${scheduler.metrics.posted}`,
           `# TYPE uprm_rewards_scheduler_batches_total counter`,
           `uprm_rewards_scheduler_batches_total ${scheduler.metrics.batches}`,
+          `# TYPE uprm_webhooks_delivered_total counter`,
+          `uprm_webhooks_delivered_total ${webhooks.metrics.delivered}`,
+          `# TYPE uprm_webhooks_failed_total counter`,
+          `uprm_webhooks_failed_total ${webhooks.metrics.failed}`,
+          `# TYPE uprm_webhooks_dead_letter_total counter`,
+          `uprm_webhooks_dead_letter_total ${webhooks.metrics.deadLetter}`,
+          `# TYPE uprm_webhooks_replayed_total counter`,
+          `uprm_webhooks_replayed_total ${webhooks.metrics.replayed}`,
+          `# TYPE uprm_webhooks_batches_total counter`,
+          `uprm_webhooks_batches_total ${webhooks.metrics.batches}`,
         ].join('\n') + '\n',
       );
       return;
@@ -66,6 +80,7 @@ async function main() {
     console.log(`[worker] received ${sig}, stopping…`);
     relay.stop();
     scheduler.stop();
+    webhooks.stop();
     try {
       await consumer.stop();
     } catch {}
@@ -85,6 +100,7 @@ async function main() {
   await Promise.all([
     relay.startLoop({ intervalMs: 1000, batchSize: 50, maxAttempts: 10 }),
     scheduler.startLoop(10_000),
+    webhooks.startLoop(5_000),
   ]);
 }
 
