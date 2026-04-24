@@ -2,6 +2,8 @@
 
 **Structured Implementation Guide & Prompt-by-Prompt Build Plan for the Coding AI Agent**
 
+> Note: this file is the design/implementation guide. The current verified runtime baseline now lives in `UPRM_As_Built.md` at the repo root and should be treated as the authoritative as-built state document.
+
 - Admin subdomain: `uprm.aquiero.com`
 - First tenant: **PSI** (Prefabricated Software Instances)
 - Date: April 2026
@@ -11,6 +13,7 @@
 ## Table of Contents
 
 **Part I — Executive Summary & Architectural Vision**
+
 1. [Purpose and Rationale](#1-purpose-and-rationale)
 2. [Core Architectural Principles](#2-core-architectural-principles)
 3. [System Boundary & First Tenant](#3-system-boundary--first-tenant)
@@ -98,12 +101,12 @@ PSI continues to own its product UI, container provisioning, and VPS orchestrati
 
 Four domains are defined from day one with strict ownership boundaries. Within the modular monolith, each domain owns its own tables, services, and events. Cross-domain reads use internal interfaces or consumed events, never direct SQL.
 
-| Domain | Owns | Key responsibility |
-|---|---|---|
-| **Identity** | users, tenant_users, auth mappings, roles | Global user identity + per-tenant account mapping |
-| **Payment Hub** | checkout sessions, subscriptions, invoices, PSP webhooks | Normalises payment events from Stripe and future PSPs |
-| **Referral Engine** | referral codes, edges, ancestry, reward rules, promoter logic | Graph + reward decisioning + promoter state |
-| **Treasury / Wallet** | ledger accounts, ledger entries, transactions, settlements | Immutable financial record and liability tracking |
+| Domain                | Owns                                                          | Key responsibility                                    |
+| --------------------- | ------------------------------------------------------------- | ----------------------------------------------------- |
+| **Identity**          | users, tenant_users, auth mappings, roles                     | Global user identity + per-tenant account mapping     |
+| **Payment Hub**       | checkout sessions, subscriptions, invoices, PSP webhooks      | Normalises payment events from Stripe and future PSPs |
+| **Referral Engine**   | referral codes, edges, ancestry, reward rules, promoter logic | Graph + reward decisioning + promoter state           |
+| **Treasury / Wallet** | ledger accounts, ledger entries, transactions, settlements    | Immutable financial record and liability tracking     |
 
 ## 5. Identity / Global User Model
 
@@ -176,17 +179,17 @@ Transaction: refund_reversal (links to original reward transaction)
 
 ## 9. Recommended Tech Stack
 
-| Layer | Choice | Rationale |
-|---|---|---|
-| Language / runtime | TypeScript on Node.js 20 LTS | Matches likely frontend stack; strong ecosystem; fast iteration |
-| Web framework | NestJS (or Fastify + light DI) | Module-per-domain maps cleanly to NestJS modules |
-| ORM / SQL | Prisma or Drizzle | Type-safe migrations, multi-tenant scoping |
-| Database | PostgreSQL 16 | Transactions, JSONB rules, row-scoped multi-tenancy |
-| Cache / locks | Redis 7 | Idempotency keys, rate limits, distributed locks |
-| Broker | RabbitMQ | Simple durable queues; swap to Kafka only if volume demands it |
-| Object storage | MinIO (S3-compatible) | Influencer proofs, CSV exports, audit bundles |
-| Observability | Prometheus + Grafana + Loki + OTel | Metrics, dashboards, logs, traces |
-| Admin frontend | React + Vite (served from admin-api) | `uprm.aquiero.com` backoffice |
+| Layer              | Choice                               | Rationale                                                       |
+| ------------------ | ------------------------------------ | --------------------------------------------------------------- |
+| Language / runtime | TypeScript on Node.js 20 LTS         | Matches likely frontend stack; strong ecosystem; fast iteration |
+| Web framework      | NestJS (or Fastify + light DI)       | Module-per-domain maps cleanly to NestJS modules                |
+| ORM / SQL          | Prisma or Drizzle                    | Type-safe migrations, multi-tenant scoping                      |
+| Database           | PostgreSQL 16                        | Transactions, JSONB rules, row-scoped multi-tenancy             |
+| Cache / locks      | Redis 7                              | Idempotency keys, rate limits, distributed locks                |
+| Broker             | RabbitMQ                             | Simple durable queues; swap to Kafka only if volume demands it  |
+| Object storage     | MinIO (S3-compatible)                | Influencer proofs, CSV exports, audit bundles                   |
+| Observability      | Prometheus + Grafana + Loki + OTel   | Metrics, dashboards, logs, traces                               |
+| Admin frontend     | React + Vite (served from admin-api) | `uprm.aquiero.com` backoffice                                   |
 
 ## 10. Repository & Module Layout
 
@@ -223,17 +226,17 @@ Transaction: refund_reversal (links to original reward transaction)
 
 ## 11. Docker Service Map
 
-| Container | Purpose | Scales |
-|---|---|---|
-| `api-core` | Public REST API for tenants | Horizontal |
-| `worker` | Consumes events, runs reward/fraud/webhook jobs | Horizontal |
-| `scheduler` | Cron: promoter eval, unlocks, settlement cycles | Singleton |
-| `admin-api` | Backoffice API + static admin UI | Horizontal |
-| `postgres` | Primary database | Vertical first, replicas later |
-| `redis` | Cache, idempotency, locks | Horizontal later |
-| `rabbitmq` | Message broker with outbox pattern | Cluster later |
-| `minio` | S3-compatible object storage | Cluster later |
-| `prometheus` / `grafana` / `loki` | Metrics, dashboards, logs | Single host first |
+| Container                         | Purpose                                         | Scales                         |
+| --------------------------------- | ----------------------------------------------- | ------------------------------ |
+| `api-core`                        | Public REST API for tenants                     | Horizontal                     |
+| `worker`                          | Consumes events, runs reward/fraud/webhook jobs | Horizontal                     |
+| `scheduler`                       | Cron: promoter eval, unlocks, settlement cycles | Singleton                      |
+| `admin-api`                       | Backoffice API + static admin UI                | Horizontal                     |
+| `postgres`                        | Primary database                                | Vertical first, replicas later |
+| `redis`                           | Cache, idempotency, locks                       | Horizontal later               |
+| `rabbitmq`                        | Message broker with outbox pattern              | Cluster later                  |
+| `minio`                           | S3-compatible object storage                    | Cluster later                  |
+| `prometheus` / `grafana` / `loki` | Metrics, dashboards, logs                       | Single host first              |
 
 ## 12. Security & Multi-Tenancy
 
@@ -397,7 +400,7 @@ All reward and promoter logic is **configuration** — never hardcoded. Every `r
   "rewardable_events": ["subscription_paid", "purchase_completed"],
   "levels": [
     { "level": 1, "reward_type": "fixed_credit", "amount": 10 },
-    { "level": 2, "reward_type": "fixed_credit", "amount": 3  }
+    { "level": 2, "reward_type": "fixed_credit", "amount": 3 }
   ],
   "unlock_delay_days": 14,
   "refund_reversal_enabled": true,
@@ -426,34 +429,34 @@ All reward and promoter logic is **configuration** — never hardcoded. Every `r
 
 ### Public tenant API
 
-| Method / Path | Purpose |
-|---|---|
-| `POST /v1/referrals/codes` | Create a referral code for a tenant_user |
-| `GET /v1/referrals/codes/:code` | Resolve a code to its owner |
-| `GET /v1/users/:id/referrals` | List users a given user has referred |
-| `GET /v1/users/:id/referral-tree?depth=2` | Return the ancestry tree |
-| `POST /v1/events` | Submit a tenant event (generic, typed by `event_type`) |
-| `GET /v1/users/:id/wallet` | Return wallet balances |
-| `GET /v1/users/:id/wallet/transactions` | Paginated statement |
-| `GET /v1/users/:id/promoter-status` | Current promoter status |
-| `POST /v1/promoter-applications` | Submit promoter application |
-| `GET /v1/webhooks/deliveries` | Outbound webhook delivery log |
-| `POST /v1/webhooks/test` | Test webhook delivery to tenant endpoint |
+| Method / Path                             | Purpose                                                |
+| ----------------------------------------- | ------------------------------------------------------ |
+| `POST /v1/referrals/codes`                | Create a referral code for a tenant_user               |
+| `GET /v1/referrals/codes/:code`           | Resolve a code to its owner                            |
+| `GET /v1/users/:id/referrals`             | List users a given user has referred                   |
+| `GET /v1/users/:id/referral-tree?depth=2` | Return the ancestry tree                               |
+| `POST /v1/events`                         | Submit a tenant event (generic, typed by `event_type`) |
+| `GET /v1/users/:id/wallet`                | Return wallet balances                                 |
+| `GET /v1/users/:id/wallet/transactions`   | Paginated statement                                    |
+| `GET /v1/users/:id/promoter-status`       | Current promoter status                                |
+| `POST /v1/promoter-applications`          | Submit promoter application                            |
+| `GET /v1/webhooks/deliveries`             | Outbound webhook delivery log                          |
+| `POST /v1/webhooks/test`                  | Test webhook delivery to tenant endpoint               |
 
 ### Admin API
 
-| Method / Path | Purpose |
-|---|---|
-| `POST /admin/tenants` | Onboard a new tenant |
-| `PATCH /admin/tenants/:id/config` | Update tenant config (rules, webhooks) |
-| `POST /admin/promoter-applications/:id/approve` | Approve promoter application |
-| `POST /admin/promoter-applications/:id/reject` | Reject promoter application |
-| `POST /admin/users/:id/adjust-balance` | Manual ledger-backed credit adjustment |
-| `POST /admin/users/:id/set-promoter-status` | Manual promoter status override |
-| `GET /admin/fraud/cases` | List fraud cases |
-| `POST /admin/fraud/cases/:id/resolve` | Close a fraud case with note |
-| `GET /admin/settlements/cycles` | List settlement cycles |
-| `POST /admin/settlements/cycles/:id/close` | Close and freeze a settlement cycle |
+| Method / Path                                   | Purpose                                |
+| ----------------------------------------------- | -------------------------------------- |
+| `POST /admin/tenants`                           | Onboard a new tenant                   |
+| `PATCH /admin/tenants/:id/config`               | Update tenant config (rules, webhooks) |
+| `POST /admin/promoter-applications/:id/approve` | Approve promoter application           |
+| `POST /admin/promoter-applications/:id/reject`  | Reject promoter application            |
+| `POST /admin/users/:id/adjust-balance`          | Manual ledger-backed credit adjustment |
+| `POST /admin/users/:id/set-promoter-status`     | Manual promoter status override        |
+| `GET /admin/fraud/cases`                        | List fraud cases                       |
+| `POST /admin/fraud/cases/:id/resolve`           | Close a fraud case with note           |
+| `GET /admin/settlements/cycles`                 | List settlement cycles                 |
+| `POST /admin/settlements/cycles/:id/close`      | Close and freeze a settlement cycle    |
 
 ## 18. Event Flows
 
@@ -1089,15 +1092,15 @@ The following set is the minimum required to operate UPRM with PSI in production
 
 ## Complexity assessment
 
-| Area | Complexity | Notes |
-|---|---|---|
-| L1/L2 reward logic | Medium | Straightforward once ancestry exists |
-| Promoter thresholds & decay | Medium | Driven entirely by rule config |
-| Wallet balances | Medium | Derived projection with a rebuild path |
-| Immutable double-entry ledger | **High** | Balance invariant + concurrency are the hard parts |
-| Refund reversal correctness | **High** | Three reversal paths; must handle partial refunds |
-| Fraud automation | **High** | Evolves continuously; start with signals + manual review |
-| Cross-platform settlement | **Very High** | Defer until a second tenant exists |
+| Area                          | Complexity    | Notes                                                    |
+| ----------------------------- | ------------- | -------------------------------------------------------- |
+| L1/L2 reward logic            | Medium        | Straightforward once ancestry exists                     |
+| Promoter thresholds & decay   | Medium        | Driven entirely by rule config                           |
+| Wallet balances               | Medium        | Derived projection with a rebuild path                   |
+| Immutable double-entry ledger | **High**      | Balance invariant + concurrency are the hard parts       |
+| Refund reversal correctness   | **High**      | Three reversal paths; must handle partial refunds        |
+| Fraud automation              | **High**      | Evolves continuously; start with signals + manual review |
+| Cross-platform settlement     | **Very High** | Defer until a second tenant exists                       |
 
 ## Top risks and mitigations
 
