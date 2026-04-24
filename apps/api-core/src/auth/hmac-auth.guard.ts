@@ -36,7 +36,7 @@ export class HmacAuthGuard implements CanActivate {
     try {
       const verified = await this.svc.verifySignedRequest({
         method: req.method,
-        path: req.url.split('?')[0] ?? req.url,
+        path: req.url,
         body: bodyString,
         header,
       });

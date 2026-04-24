@@ -139,6 +139,37 @@ describe('TenantService.verifySignedRequest', () => {
     ).rejects.toMatchObject({ code: 'KEY_INVALID' });
   });
 
+  it('covers the query string in the signature', async () => {
+    const keyHash = 'a'.repeat(64);
+    const keyPrefix = 'deadbeef';
+    const db = makeFakeDb({
+      id: 'ak_1',
+      tenantId: 'tenant-1',
+      keyHash,
+      keyPrefix,
+      status: 'active',
+    });
+    const svc = new TenantService(db);
+
+    const method = 'GET';
+    const path = '/v1/users/tu-bob/referral-tree?depth=2';
+    const { header } = TenantService.signRequest(keyHash, keyPrefix, method, path, '', now);
+
+    await expect(svc.verifySignedRequest({ method, path, body: '', header })).resolves.toEqual({
+      tenantId: 'tenant-1',
+      apiKeyId: 'ak_1',
+    });
+
+    await expect(
+      svc.verifySignedRequest({
+        method,
+        path: '/v1/users/tu-bob/referral-tree?depth=3',
+        body: '',
+        header,
+      }),
+    ).rejects.toMatchObject({ code: 'SIG_MISMATCH' });
+  });
+
   it('rejects a malformed Authorization header', async () => {
     const svc = new TenantService(makeFakeDb());
     await expect(
