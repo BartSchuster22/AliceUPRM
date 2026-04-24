@@ -105,6 +105,14 @@ export class ScheduledPostingService {
 
     let posted = 0;
     for (const row of due) {
+      const claim = await this.db.scheduledPosting.updateMany({
+        where: { id: row.id, status: 'pending' },
+        data: { status: 'processing' },
+      });
+      if (claim.count === 0) {
+        continue;
+      }
+
       try {
         const payload = row.payload as any;
         const result = await this.postings.postEntry({
@@ -123,10 +131,12 @@ export class ScheduledPostingService {
           where: { id: row.id },
           data: { status: 'posted', resultEntryId: result.id },
         });
-        posted++;
+        if (!result.duplicate) {
+          posted++;
+        }
       } catch (e: any) {
-        await this.db.scheduledPosting.update({
-          where: { id: row.id },
+        await this.db.scheduledPosting.updateMany({
+          where: { id: row.id, status: 'processing' },
           data: {
             status: 'pending',
             cancelReason: (e?.message ?? 'posting failed').slice(0, 256),

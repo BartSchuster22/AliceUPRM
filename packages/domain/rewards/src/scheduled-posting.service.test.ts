@@ -138,6 +138,71 @@ describe('ScheduledPostingService compensating events', () => {
     });
   });
 
+  it('skips rows already claimed by another scheduler runner', async () => {
+    const row = {
+      id: 'sp-due-1',
+      tenantId: 'tenant-1',
+      sourceEventId: 'source-evt-1',
+      payload: {
+        currency: 'EUR',
+        description: 'scheduled reward',
+        postings: [
+          { accountId: 'expense', amount: '299' },
+          { accountId: 'balance', amount: '-299' },
+        ],
+      },
+    };
+
+    db.scheduledPosting.findMany = vi.fn().mockResolvedValue([row]);
+    db.scheduledPosting.updateMany = vi
+      .fn()
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    db.scheduledPosting.update = vi.fn().mockResolvedValue({ id: 'sp-due-1', status: 'posted' });
+
+    const postEntry = vi.fn().mockResolvedValue({ id: 'entry-1', duplicate: false });
+    (svc as any).postings = { postEntry };
+
+    const [first, second] = await Promise.all([
+      svc.postDueRewards(new Date('2026-04-24T15:00:00.000Z')),
+      svc.postDueRewards(new Date('2026-04-24T15:00:00.000Z')),
+    ]);
+
+    expect(postEntry).toHaveBeenCalledTimes(1);
+    expect(first + second).toBe(1);
+  });
+
+  it('does not count duplicate ledger postings as newly posted rewards', async () => {
+    db.scheduledPosting.findMany = vi.fn().mockResolvedValue([
+      {
+        id: 'sp-due-2',
+        tenantId: 'tenant-1',
+        sourceEventId: 'source-evt-2',
+        payload: {
+          currency: 'EUR',
+          description: 'scheduled reward',
+          postings: [
+            { accountId: 'expense', amount: '500' },
+            { accountId: 'balance', amount: '-500' },
+          ],
+        },
+      },
+    ]);
+    db.scheduledPosting.updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    db.scheduledPosting.update = vi.fn().mockResolvedValue({ id: 'sp-due-2', status: 'posted' });
+
+    const postEntry = vi.fn().mockResolvedValue({ id: 'entry-existing', duplicate: true });
+    (svc as any).postings = { postEntry };
+
+    const result = await svc.postDueRewards(new Date('2026-04-24T15:00:00.000Z'));
+
+    expect(result).toBe(0);
+    expect(db.scheduledPosting.update).toHaveBeenCalledWith({
+      where: { id: 'sp-due-2' },
+      data: { status: 'posted', resultEntryId: 'entry-existing' },
+    });
+  });
+
   it('skips cleanly when no event link exists', async () => {
     db.eventLink.findFirst.mockResolvedValue(null);
 
