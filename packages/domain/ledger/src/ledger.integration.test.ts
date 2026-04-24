@@ -35,7 +35,7 @@ describe('ledger integration — real Postgres', () => {
 
   it('provisions tenant accounts idempotently', async () => {
     const first = await accounts.provisionTenantAccounts(TENANT_ID, 'EUR');
-    expect(first.length).toBe(3);
+    expect(first.length).toBe(4);
 
     const second = await accounts.provisionTenantAccounts(TENANT_ID, 'EUR');
     expect(second.map((a) => a.id).sort()).toEqual(first.map((a) => a.id).sort());

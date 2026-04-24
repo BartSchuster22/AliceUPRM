@@ -263,3 +263,27 @@ model ScheduledPosting {
   @@index([sourceEventId])
   @@map("scheduled_postings")
 }
+
+model PayoutRequest {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  tenantUserId        String
+  amountMinor         BigInt
+  baseCurrency        String
+  destinationCurrency String?
+  payoutMethod        String
+  destination         Json
+  status              String   @default("requested") // requested | approved | sent | failed | cancelled
+  failureReason       String?
+  externalPayoutId    String?
+  approvedAt          DateTime?
+  sentAt              DateTime?
+  failedAt            DateTime?
+  cancelledAt         DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([tenantId, tenantUserId, createdAt])
+  @@index([status, createdAt])
+  @@map("payout_requests")
+}

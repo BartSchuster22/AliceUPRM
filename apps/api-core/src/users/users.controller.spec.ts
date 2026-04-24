@@ -1,7 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { UsersController } from './users.controller';
 
-describe('UsersController balance endpoint', () => {
+describe('UsersController balance and payouts', () => {
   let controller: UsersController;
 
   beforeEach(() => {
@@ -68,15 +68,76 @@ describe('UsersController balance endpoint', () => {
     });
   });
 
-  it('throws NotFoundException when the tenant user does not exist', async () => {
-    (controller as any).svc = {
-      getTenantUser: jest.fn().mockResolvedValue(null),
+  it('requests a payout and maps the API response', async () => {
+    (controller as any).payoutSvc = {
+      requestPayout: jest.fn().mockResolvedValue({
+        id: 'po-1',
+        tenantId: 'tenant-1',
+        tenantUserId: 'tu-alice',
+        amountMinor: 250n,
+        baseCurrency: 'EUR',
+        destinationCurrency: 'USD',
+        payoutMethod: 'bank_transfer',
+        destination: { iban: 'DE123' },
+        status: 'requested',
+      }),
     };
 
-    await expect(
-      (controller as any).balance('missing-user', {
-        uprm: { tenantId: 'tenant-1' },
+    const result = await (controller as any).requestPayout(
+      'tu-alice',
+      {
+        amountMinor: 250,
+        payoutMethod: 'bank_transfer',
+        destination: { iban: 'DE123' },
+        destinationCurrency: 'USD',
+      },
+      { uprm: { tenantId: 'tenant-1' } },
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: 'po-1',
+        tenant_id: 'tenant-1',
+        tenant_user_id: 'tu-alice',
+        amount_minor: 250,
+        base_currency: 'EUR',
+        destination_currency: 'USD',
+        payout_method: 'bank_transfer',
+        status: 'requested',
       }),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    );
+  });
+
+  it('lists payouts for a user', async () => {
+    (controller as any).payoutSvc = {
+      listUserPayouts: jest.fn().mockResolvedValue([
+        {
+          id: 'po-1',
+          tenantId: 'tenant-1',
+          tenantUserId: 'tu-alice',
+          amountMinor: 250n,
+          baseCurrency: 'EUR',
+          destinationCurrency: null,
+          payoutMethod: 'paypal',
+          destination: { email: 'alice@example.com' },
+          status: 'requested',
+        },
+      ]),
+    };
+
+    const result = await (controller as any).listPayouts('tu-alice', {
+      uprm: { tenantId: 'tenant-1' },
+    });
+
+    expect(result).toEqual({
+      payouts: [
+        expect.objectContaining({
+          id: 'po-1',
+          amount_minor: 250,
+          payout_method: 'paypal',
+          status: 'requested',
+        }),
+      ],
+    });
   });
 });

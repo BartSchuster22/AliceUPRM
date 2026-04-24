@@ -1,0 +1,21 @@
+{
+  "name": "@uprm/payouts",
+  "version": "0.0.1",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@uprm/db": "workspace:*",
+    "@uprm/ledger": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.4"
+  }
+}

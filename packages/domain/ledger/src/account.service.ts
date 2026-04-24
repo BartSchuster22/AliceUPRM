@@ -8,6 +8,7 @@ export const SYSTEM_ACCOUNT_TYPES = [
   'tenant_cash',
   'tenant_revenue',
   'tenant_reward_expense',
+  'payout_payable',
   'platform_fee',
 ] as const;
 export type SystemAccountType = (typeof SYSTEM_ACCOUNT_TYPES)[number];
