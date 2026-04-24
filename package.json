@@ -7,6 +7,8 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "test:unit": "pnpm -r test",
+    "test:integration": "pnpm --filter @uprm/ledger test:integration",
     "prepare": "husky"
   },
   "devDependencies": {
