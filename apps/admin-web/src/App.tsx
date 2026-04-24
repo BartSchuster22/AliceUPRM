@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { fetchTenants, type TenantRecord } from './api';
+import { fetchTenants, login, type TenantRecord } from './api';
 
 type ViewKey = 'tenants' | 'users' | 'wallets' | 'promoters' | 'fraud' | 'settlements';
 
@@ -15,19 +15,21 @@ const NAV_ITEMS: Array<{ key: ViewKey; label: string }> = [
 const TOKEN_KEY = 'uprmAdminBearerToken';
 
 export default function App() {
-  const [tokenInput, setTokenInput] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [token, setToken] = useState('');
-  const [status, setStatus] = useState('Paste an admin bearer token to load the backoffice.');
+  const [status, setStatus] = useState('Sign in to access the UPRM admin dashboard.');
   const [view, setView] = useState<ViewKey>('tenants');
   const [tenants, setTenants] = useState<TenantRecord[]>([]);
   const [selectedTenantId, setSelectedTenantId] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(TOKEN_KEY) ?? '';
     if (stored) {
       setToken(stored);
-      setTokenInput(stored);
+      setIsAuthenticated(true);
     }
   }, []);
 
@@ -49,23 +51,47 @@ export default function App() {
       setTenants(result);
       setSelectedTenantId((current) => current || result[0]?.id || '');
       setStatus(result.length ? `Loaded ${result.length} tenant(s).` : 'No tenants returned.');
+      setIsAuthenticated(true);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Failed to load tenants.');
       setTenants([]);
       setSelectedTenantId('');
+      if (String(error).includes('401')) {
+        logout();
+      }
     } finally {
       setLoading(false);
     }
   }
 
-  function connectToken() {
-    const cleaned = tokenInput.trim();
-    setToken(cleaned);
-    if (cleaned) {
-      window.localStorage.setItem(TOKEN_KEY, cleaned);
-    } else {
-      window.localStorage.removeItem(TOKEN_KEY);
+  async function submitLogin() {
+    setLoading(true);
+    setStatus('Signing in…');
+    try {
+      const result = await login(email, password);
+      window.localStorage.setItem(TOKEN_KEY, result.access_token);
+      setToken(result.access_token);
+      setPassword('');
+      setIsAuthenticated(true);
+      setStatus(
+        `Signed in as ${result.admin.display_name || result.admin.email || result.admin.subject}.`,
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Login failed.');
+      setIsAuthenticated(false);
+    } finally {
+      setLoading(false);
     }
+  }
+
+  function logout() {
+    window.localStorage.removeItem(TOKEN_KEY);
+    setToken('');
+    setPassword('');
+    setTenants([]);
+    setSelectedTenantId('');
+    setIsAuthenticated(false);
+    setStatus('Signed out.');
   }
 
   return (
@@ -80,17 +106,31 @@ export default function App() {
         </div>
 
         <label className="field">
-          <span>Bearer token</span>
-          <textarea
-            value={tokenInput}
-            onChange={(event) => setTokenInput(event.target.value)}
-            placeholder="Paste a JWT issued by your admin identity provider"
-            rows={5}
+          <span>Email</span>
+          <input
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="admin@uprm.local"
+            type="email"
           />
         </label>
 
-        <button className="primary" onClick={connectToken}>
-          Save token
+        <label className="field">
+          <span>Password</span>
+          <input
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="Enter your admin password"
+            type="password"
+          />
+        </label>
+
+        <button className="primary" onClick={() => void submitLogin()} disabled={loading}>
+          Sign in
+        </button>
+
+        <button className="secondary" onClick={logout} disabled={!isAuthenticated}>
+          Sign out
         </button>
 
         <label className="field">
@@ -114,6 +154,7 @@ export default function App() {
               key={item.key}
               className={item.key === view ? 'nav-item active' : 'nav-item'}
               onClick={() => setView(item.key)}
+              disabled={!isAuthenticated}
             >
               {item.label}
             </button>
@@ -136,7 +177,12 @@ export default function App() {
           </button>
         </header>
 
-        {view === 'tenants' ? (
+        {!isAuthenticated ? (
+          <section className="panel">
+            <h3>Login required</h3>
+            <p>Use your local admin email and password to enter the dashboard.</p>
+          </section>
+        ) : view === 'tenants' ? (
           <section className="panel-grid">
             <section className="panel">
               <h3>Tenant directory</h3>

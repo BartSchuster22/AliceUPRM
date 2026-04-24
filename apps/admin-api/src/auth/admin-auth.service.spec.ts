@@ -43,6 +43,64 @@ describe('AdminAuthService', () => {
     });
   });
 
+  it('authenticates valid local email/password credentials', async () => {
+    const service = new AdminAuthService(config as any);
+    const passwordHash = (service as any).hashPassword('secret-pass-123');
+    const update = jest.fn().mockResolvedValue(undefined);
+    (service as any).db = {
+      adminUser: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'admin-1',
+          subject: 'local:admin@uprm.local',
+          email: 'admin@uprm.local',
+          displayName: 'UPRM Admin',
+          passwordHash,
+          roles: ['super_admin'],
+          status: 'active',
+        }),
+        update,
+      },
+    };
+
+    await expect(
+      service.authenticateWithPassword('admin@uprm.local', 'secret-pass-123'),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        token: expect.any(String),
+        admin: {
+          adminUserId: 'admin-1',
+          subject: 'local:admin@uprm.local',
+          email: 'admin@uprm.local',
+          displayName: 'UPRM Admin',
+          roles: ['super_admin'],
+        },
+      }),
+    );
+    expect(update).toHaveBeenCalled();
+  });
+
+  it('rejects invalid local password credentials', async () => {
+    const service = new AdminAuthService(config as any);
+    const passwordHash = (service as any).hashPassword('secret-pass-123');
+    (service as any).db = {
+      adminUser: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'admin-1',
+          subject: 'local:admin@uprm.local',
+          email: 'admin@uprm.local',
+          displayName: 'UPRM Admin',
+          passwordHash,
+          roles: ['super_admin'],
+          status: 'active',
+        }),
+      },
+    };
+
+    await expect(
+      service.authenticateWithPassword('admin@uprm.local', 'wrong-pass-456'),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
   it('rejects missing bearer token', async () => {
     const service = new AdminAuthService(config as any);
     await expect(

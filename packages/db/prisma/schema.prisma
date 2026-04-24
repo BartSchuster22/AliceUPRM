@@ -289,16 +289,18 @@ model PayoutRequest {
 }
 
 model AdminUser {
-  id          String   @id @default(uuid())
-  subject     String   @unique
-  email       String?
-  displayName String?
-  roles       String[] @default([])
-  status      String   @default("active")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(uuid())
+  subject      String   @unique
+  email        String?  @unique
+  displayName  String?
+  passwordHash String?
+  roles        String[] @default([])
+  status       String   @default("active")
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  auditLogs   AuditLog[]
+  auditLogs    AuditLog[]
 
   @@map("admin_users")
 }

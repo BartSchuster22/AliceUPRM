@@ -1,6 +1,7 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { AdminAuthService } from '../auth/admin-auth.service';
 import { BootstrapTokenGuard } from '../auth/bootstrap-token.guard';
+import { CreateLocalAdminUserDto } from './dto/create-local-admin-user.dto';
 import { UpsertAdminUserDto } from './dto/upsert-admin-user.dto';
 
 @Controller('bootstrap/admin-users')
@@ -24,6 +25,26 @@ export class BootstrapController {
       display_name: adminUser.displayName,
       roles: adminUser.roles,
       status: adminUser.status,
+    };
+  }
+
+  @Post('local')
+  async upsertLocal(@Body() dto: CreateLocalAdminUserDto) {
+    const adminUser = await this.auth.upsertLocalAdminUser({
+      email: dto.email,
+      displayName: dto.displayName ?? null,
+      password: dto.password,
+      roles: dto.roles,
+    });
+
+    return {
+      id: adminUser.id,
+      subject: adminUser.subject,
+      email: adminUser.email,
+      display_name: adminUser.displayName,
+      roles: adminUser.roles,
+      status: adminUser.status,
+      login_type: 'local_password',
     };
   }
 }
