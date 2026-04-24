@@ -9,8 +9,10 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { TenantService } from '@uprm/tenants';
 import { IdentityService } from '@uprm/identity';
 import { ReferralService } from '@uprm/referrals';
+import { BalanceService } from '@uprm/ledger';
 import { HmacAuthGuard } from '../auth/hmac-auth.guard';
 import { CreateUserDto } from './dto/create-user.dto';
 
@@ -19,6 +21,8 @@ import { CreateUserDto } from './dto/create-user.dto';
 export class UsersController {
   private readonly svc = new IdentityService();
   private readonly refSvc = new ReferralService();
+  private readonly tenantSvc = new TenantService();
+  private readonly balanceSvc = new BalanceService();
 
   @Post()
   async create(@Body() dto: CreateUserDto, @Req() req: any) {
@@ -40,6 +44,36 @@ export class UsersController {
     return tu;
   }
 
+  @Get(':id/balance')
+  async balance(@Param('id') id: string, @Req() req: any) {
+    const tenantId: string = req.uprm.tenantId;
+    const tu = await this.svc.getTenantUser(tenantId, id);
+    if (!tu) throw new NotFoundException('tenant user not found');
+
+    const tenant = await this.tenantSvc.getTenant(tenantId);
+    if (!tenant) throw new NotFoundException('tenant not found');
+
+    const currency = tenant.baseCurrency;
+    const accountBalance = await this.balanceSvc.getUserBalance(
+      tenantId,
+      id,
+      currency,
+    );
+    const rawBalance = accountBalance?.balance ?? 0n;
+    const amountMinor = Number(-rawBalance);
+
+    return {
+      tenant_user_id: id,
+      base_currency: currency,
+      balance_credits: amountMinor,
+      balance_display: `${amountMinor} Credits`,
+      balance_as_money: {
+        amount_minor: amountMinor,
+        formatted: formatMinorCurrency(amountMinor, currency),
+      },
+    };
+  }
+
   @Get(':id/referral-tree')
   async tree(
     @Param('id') id: string,
@@ -58,4 +92,13 @@ export class UsersController {
       nodes,
     };
   }
+}
+
+function formatMinorCurrency(amountMinor: number, currency: string): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amountMinor / 100);
 }

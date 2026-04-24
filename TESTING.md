@@ -44,3 +44,4 @@ pnpm test:integration
 
 - If `DATABASE_URL` is missing, integration tests will fail at Prisma initialization.
 - This split is intentional so feature work can use a reproducible default test path while keeping DB-backed verification available.
+- The ledger integration suite now uses synthetic tenant/user IDs and must never point at live PSI IDs.

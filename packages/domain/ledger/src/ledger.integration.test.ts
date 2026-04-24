@@ -5,7 +5,7 @@ import { PostingService } from './posting.service';
 import { BalanceService } from './balance.service';
 import { LedgerError } from './errors';
 
-const TENANT_ID = '470d5d09-4afe-46e2-9238-9b30d48580ed';
+const TENANT_ID = '11111111-1111-1111-1111-111111111111';
 
 async function wipeLedger(tenantId: string) {
   await prisma.ledgerPosting.deleteMany({
@@ -202,14 +202,14 @@ describe('ledger integration — real Postgres', () => {
   it('creates user_balance account on demand (idempotent)', async () => {
     const acc = await accounts.ensureUserBalanceAccount({
       tenantId: TENANT_ID,
-      tenantUserId: '661852a0-5690-4575-afaf-d10d67ad18d7',
+      tenantUserId: '22222222-2222-2222-2222-222222222222',
       currency: 'EUR',
     });
     expect(acc.accountType).toBe('user_balance');
 
     const again = await accounts.ensureUserBalanceAccount({
       tenantId: TENANT_ID,
-      tenantUserId: '661852a0-5690-4575-afaf-d10d67ad18d7',
+      tenantUserId: '22222222-2222-2222-2222-222222222222',
       currency: 'EUR',
     });
     expect(again.id).toBe(acc.id);
