@@ -25,6 +25,8 @@
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@uprm/db": "workspace:*",
+    "@uprm/events": "workspace:*",
+    "@uprm/payments": "workspace:*",
     "@uprm/payouts": "workspace:*",
     "@uprm/tenants": "workspace:*",
     "class-transformer": "^0.5.1",

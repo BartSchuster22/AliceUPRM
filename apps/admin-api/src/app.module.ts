@@ -5,12 +5,14 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TenantsModule } from './tenants/tenants.module';
 import { PayoutsModule } from './payouts/payouts.module';
+import { StripeWebhooksModule } from './webhooks/stripe-webhooks.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     TenantsModule,
     PayoutsModule,
+    StripeWebhooksModule,
   ],
   controllers: [AppController],
   providers: [

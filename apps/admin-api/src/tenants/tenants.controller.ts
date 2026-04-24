@@ -10,6 +10,7 @@ import {
 import { TenantService } from '@uprm/tenants';
 import { BootstrapTokenGuard } from '../auth/bootstrap-token.guard';
 import { CreateTenantDto } from './dto/create-tenant.dto';
+import { UpdateTenantWebhookConfigDto } from './dto/update-tenant-webhook-config.dto';
 
 @Controller('admin/tenants')
 @UseGuards(BootstrapTokenGuard)
@@ -43,5 +44,27 @@ export class TenantsController {
     const t = await this.svc.getTenant(id);
     if (!t) throw new NotFoundException('tenant not found');
     return t;
+  }
+
+  @Post(':id/webhook-config')
+  async updateWebhookConfig(
+    @Param('id') id: string,
+    @Body() dto: UpdateTenantWebhookConfigDto,
+  ) {
+    const config = await this.svc.updateConfig(id, {
+      webhookConfig: {
+        stripe: {
+          enabled: dto.stripe.enabled,
+          webhookSecret: dto.stripe.webhookSecret,
+          mode: dto.stripe.mode,
+          defaultCurrency: dto.stripe.defaultCurrency,
+        },
+      },
+    });
+
+    return {
+      tenant_id: config.tenantId,
+      webhook_config: config.webhookConfig,
+    };
   }
 }

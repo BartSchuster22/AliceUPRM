@@ -43,6 +43,12 @@ importers:
       '@uprm/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@uprm/events':
+        specifier: workspace:*
+        version: link:../../packages/domain/events
+      '@uprm/payments':
+        specifier: workspace:*
+        version: link:../../packages/domain/payments
       '@uprm/payouts':
         specifier: workspace:*
         version: link:../../packages/domain/payouts
@@ -529,6 +535,25 @@ importers:
       '@types/amqplib':
         specifier: ^0.10.8
         version: 0.10.8
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.4
+        version: 4.1.4(@types/node@25.6.0)(vite@8.0.8(@types/node@25.6.0)(jiti@2.6.1)(terser@5.46.1)(yaml@2.8.3))
+
+  packages/domain/payments:
+    dependencies:
+      '@uprm/events':
+        specifier: workspace:*
+        version: link:../events
+      stripe:
+        specifier: ^18.5.0
+        version: 18.5.0(@types/node@25.6.0)
+    devDependencies:
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
@@ -6287,6 +6312,18 @@ packages:
       }
     engines: { node: '>=8' }
 
+  stripe@18.5.0:
+    resolution:
+      {
+        integrity: sha512-Hp+wFiEQtCB0LlNgcFh5uVyKznpDjzyUZ+CNVEf+I3fhlYvh7rZruIg+jOwzJRCpy0ZTPMjlzm7J2/M2N6d+DA==,
+      }
+    engines: { node: '>=12.*' }
+    peerDependencies:
+      '@types/node': '>=12.x.x'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
+
   strtok3@10.3.5:
     resolution:
       {
@@ -10657,6 +10694,12 @@ snapshots:
   strip-final-newline@3.0.0: {}
 
   strip-json-comments@3.1.1: {}
+
+  stripe@18.5.0(@types/node@25.6.0):
+    dependencies:
+      qs: 6.15.1
+    optionalDependencies:
+      '@types/node': 25.6.0
 
   strtok3@10.3.5:
     dependencies:
