@@ -188,3 +188,78 @@ model EventLink {
   @@index([tenantId, linkedEventId])
   @@map("event_links")
 }
+
+
+// ============================================================
+// LEDGER MODELS  (Phase 4)
+// ============================================================
+
+model LedgerAccount {
+  id            String   @id @default(uuid())
+  tenantId      String
+  accountType   String   // 'tenant_cash' | 'tenant_revenue' | 'tenant_reward_expense' | 'user_balance' | 'platform_fee'
+  tenantUserId  String?  // null for system accounts; set for user_balance
+  currency      String
+  status        String   @default("active")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  postings      LedgerPosting[]
+
+  // One account per (tenant, type, user, currency). Nulls are distinct in Postgres,
+  // so user_balance uniqueness is effectively (tenantId, accountType, tenantUserId, currency).
+  @@unique([tenantId, accountType, tenantUserId, currency])
+  @@index([tenantId, currency])
+  @@map("ledger_accounts")
+}
+
+model LedgerEntry {
+  id              String   @id @default(uuid())
+  tenantId        String
+  currency        String
+  description     String
+  idempotencyKey  String
+  sourceEventId   String?  // link back to the ingested_events row that caused this entry
+  createdAt       DateTime @default(now())
+
+  postings        LedgerPosting[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, createdAt])
+  @@index([sourceEventId])
+  @@map("ledger_entries")
+}
+
+model LedgerPosting {
+  id         String   @id @default(uuid())
+  entryId    String
+  entry      LedgerEntry   @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  accountId  String
+  account    LedgerAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  amount     BigInt   // positive = debit, negative = credit; entry sum must equal 0
+  currency   String   // must match entry.currency and account.currency
+  createdAt  DateTime @default(now())
+
+  @@index([accountId, createdAt])
+  @@index([entryId])
+  @@map("ledger_postings")
+}
+
+model ScheduledPosting {
+  id              String    @id @default(uuid())
+  tenantId        String
+  sourceEventId   String    // event that triggered the scheduling
+  postAt          DateTime  // when the settlement window expires and this becomes eligible
+  status          String    @default("pending") // 'pending' | 'posted' | 'cancelled'
+  idempotencyKey  String
+  payload         Json      // {postings: [{accountId, amount, currency}, ...], description, currency}
+  resultEntryId   String?   // set after successful post
+  cancelReason    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([status, postAt])
+  @@index([sourceEventId])
+  @@map("scheduled_postings")
+}

@@ -1,19 +1,27 @@
 import 'dotenv/config';
 import * as http from 'node:http';
 import { OutboxRelayService, RabbitPublisher } from '@uprm/outbox';
+import { RewardConsumer } from './rewards/reward-consumer';
+import { RewardScheduler } from './rewards/scheduler';
 
 async function main() {
   const url = process.env.RABBITMQ_URL;
   if (!url) throw new Error('RABBITMQ_URL not set');
 
+  // Outbox relay — publishes outbox_messages to RabbitMQ
   const publisher = new RabbitPublisher(url);
   await publisher.connect();
-  // eslint-disable-next-line no-console
-  console.log('[worker] connected to RabbitMQ');
-
+  console.log('[worker] outbox publisher connected to RabbitMQ');
   const relay = new OutboxRelayService(publisher);
 
-  // Tiny status endpoint for liveness and metrics.
+  // Reward consumer — subscribes to uprm.events.*, schedules rewards
+  const consumer = new RewardConsumer(url);
+  await consumer.start();
+
+  // Reward scheduler — polls scheduled_postings, posts due ones
+  const scheduler = new RewardScheduler();
+
+  // Metrics + healthz endpoint
   const port = Number(process.env.PORT) || 4002;
   const server = http.createServer((req, res) => {
     if (req.url === '/healthz') {
@@ -31,6 +39,18 @@ async function main() {
           `uprm_outbox_failed_total ${relay.metrics.failed}`,
           `# TYPE uprm_outbox_batches_total counter`,
           `uprm_outbox_batches_total ${relay.metrics.batchesProcessed}`,
+          `# TYPE uprm_rewards_consumed_total counter`,
+          `uprm_rewards_consumed_total ${consumer.metrics.consumed}`,
+          `# TYPE uprm_rewards_scheduled_total counter`,
+          `uprm_rewards_scheduled_total ${consumer.metrics.scheduled}`,
+          `# TYPE uprm_rewards_skipped_total counter`,
+          `uprm_rewards_skipped_total ${consumer.metrics.skipped}`,
+          `# TYPE uprm_rewards_errored_total counter`,
+          `uprm_rewards_errored_total ${consumer.metrics.errored}`,
+          `# TYPE uprm_rewards_posted_total counter`,
+          `uprm_rewards_posted_total ${scheduler.metrics.posted}`,
+          `# TYPE uprm_rewards_scheduler_batches_total counter`,
+          `uprm_rewards_scheduler_batches_total ${scheduler.metrics.batches}`,
         ].join('\n') + '\n',
       );
       return;
@@ -45,6 +65,10 @@ async function main() {
   const shutdown = async (sig: string) => {
     console.log(`[worker] received ${sig}, stopping…`);
     relay.stop();
+    scheduler.stop();
+    try {
+      await consumer.stop();
+    } catch {}
     await new Promise((r) => setTimeout(r, 200));
     try {
       await publisher.close();
@@ -57,12 +81,14 @@ async function main() {
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-  // Enter the relay loop — runs forever.
-  await relay.startLoop({ intervalMs: 1000, batchSize: 50, maxAttempts: 10 });
+  // Kick off the two loops in parallel and never return.
+  await Promise.all([
+    relay.startLoop({ intervalMs: 1000, batchSize: 50, maxAttempts: 10 }),
+    scheduler.startLoop(10_000),
+  ]);
 }
 
 main().catch((e) => {
-  // eslint-disable-next-line no-console
   console.error('[worker] fatal:', e);
   process.exit(1);
 });

@@ -1,0 +1,23 @@
+[Unit]
+Description=UPRM api-core (tenant-facing HMAC API)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=uprm
+Group=uprm
+WorkingDirectory=/srv/uprm/apps/api-core
+EnvironmentFile=/srv/uprm/.env
+Environment=PORT=4000
+Environment=PATH=/home/uprm/.nvm/versions/node/v20.20.2/bin:/usr/bin:/bin
+ExecStart=/home/uprm/.nvm/versions/node/v20.20.2/bin/pnpm run start
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=uprm-api-core
+
+[Install]
+WantedBy=multi-user.target
