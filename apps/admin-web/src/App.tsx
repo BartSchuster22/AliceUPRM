@@ -13,9 +13,11 @@ const NAV_ITEMS: Array<{ key: ViewKey; label: string }> = [
 ];
 
 const TOKEN_KEY = 'uprmAdminBearerToken';
+const LOGIN_PATH = '/login';
+const DASHBOARD_PATH = '/';
 
 export default function App() {
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState('admin@uprm.local');
   const [password, setPassword] = useState('');
   const [token, setToken] = useState('');
   const [status, setStatus] = useState('Sign in to access the UPRM admin dashboard.');
@@ -24,12 +26,21 @@ export default function App() {
   const [selectedTenantId, setSelectedTenantId] = useState('');
   const [loading, setLoading] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [pathname, setPathname] = useState(window.location.pathname || DASHBOARD_PATH);
+
+  useEffect(() => {
+    const onPopState = () => setPathname(window.location.pathname || DASHBOARD_PATH);
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(TOKEN_KEY) ?? '';
     if (stored) {
       setToken(stored);
       setIsAuthenticated(true);
+    } else if (pathname !== LOGIN_PATH) {
+      navigate(LOGIN_PATH, true);
     }
   }, []);
 
@@ -38,10 +49,26 @@ export default function App() {
     void loadTenants(token);
   }, [token]);
 
+  useEffect(() => {
+    if (!isAuthenticated && pathname !== LOGIN_PATH) {
+      navigate(LOGIN_PATH, true);
+    }
+    if (isAuthenticated && pathname === LOGIN_PATH) {
+      navigate(DASHBOARD_PATH, true);
+    }
+  }, [isAuthenticated, pathname]);
+
   const selectedTenant = useMemo(
     () => tenants.find((tenant) => tenant.id === selectedTenantId) ?? tenants[0] ?? null,
     [selectedTenantId, tenants],
   );
+
+  function navigate(nextPath: string, replace = false) {
+    const normalized = nextPath === LOGIN_PATH ? LOGIN_PATH : DASHBOARD_PATH;
+    const method = replace ? 'replaceState' : 'pushState';
+    window.history[method](null, '', normalized);
+    setPathname(normalized);
+  }
 
   async function loadTenants(nextToken: string) {
     setLoading(true);
@@ -53,10 +80,11 @@ export default function App() {
       setStatus(result.length ? `Loaded ${result.length} tenant(s).` : 'No tenants returned.');
       setIsAuthenticated(true);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Failed to load tenants.');
+      const message = error instanceof Error ? error.message : 'Failed to load tenants.';
+      setStatus(message);
       setTenants([]);
       setSelectedTenantId('');
-      if (String(error).includes('401')) {
+      if (message.includes('401')) {
         logout();
       }
     } finally {
@@ -76,6 +104,7 @@ export default function App() {
       setStatus(
         `Signed in as ${result.admin.display_name || result.admin.email || result.admin.subject}.`,
       );
+      navigate(DASHBOARD_PATH);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Login failed.');
       setIsAuthenticated(false);
@@ -92,6 +121,50 @@ export default function App() {
     setSelectedTenantId('');
     setIsAuthenticated(false);
     setStatus('Signed out.');
+    navigate(LOGIN_PATH);
+  }
+
+  if (pathname === LOGIN_PATH || !isAuthenticated) {
+    return (
+      <main className="login-page">
+        <section className="login-card">
+          <div className="eyebrow">UPRM Admin</div>
+          <h1>Login</h1>
+          <p className="muted">Sign in to continue to the admin dashboard.</p>
+
+          <label className="field">
+            <span>Email</span>
+            <input
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="admin@uprm.local"
+              type="email"
+            />
+          </label>
+
+          <label className="field">
+            <span>Password</span>
+            <input
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Enter your admin password"
+              type="password"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !loading) {
+                  void submitLogin();
+                }
+              }}
+            />
+          </label>
+
+          <button className="primary" onClick={() => void submitLogin()} disabled={loading}>
+            Sign in
+          </button>
+
+          <p className="muted status-text">{status}</p>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -105,33 +178,15 @@ export default function App() {
           </p>
         </div>
 
-        <label className="field">
-          <span>Email</span>
-          <input
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="admin@uprm.local"
-            type="email"
-          />
-        </label>
-
-        <label className="field">
-          <span>Password</span>
-          <input
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="Enter your admin password"
-            type="password"
-          />
-        </label>
-
-        <button className="primary" onClick={() => void submitLogin()} disabled={loading}>
-          Sign in
-        </button>
-
-        <button className="secondary" onClick={logout} disabled={!isAuthenticated}>
-          Sign out
-        </button>
+        <div className="panel-inline">
+          <div>
+            <div className="field-label">Signed in as</div>
+            <strong>{email}</strong>
+          </div>
+          <button className="secondary" onClick={logout}>
+            Sign out
+          </button>
+        </div>
 
         <label className="field">
           <span>Tenant</span>
@@ -154,7 +209,6 @@ export default function App() {
               key={item.key}
               className={item.key === view ? 'nav-item active' : 'nav-item'}
               onClick={() => setView(item.key)}
-              disabled={!isAuthenticated}
             >
               {item.label}
             </button>
@@ -177,12 +231,7 @@ export default function App() {
           </button>
         </header>
 
-        {!isAuthenticated ? (
-          <section className="panel">
-            <h3>Login required</h3>
-            <p>Use your local admin email and password to enter the dashboard.</p>
-          </section>
-        ) : view === 'tenants' ? (
+        {view === 'tenants' ? (
           <section className="panel-grid">
             <section className="panel">
               <h3>Tenant directory</h3>
