@@ -30,17 +30,21 @@
     "@uprm/ledger": "workspace:*",
     "@uprm/payments": "workspace:*",
     "@uprm/payouts": "workspace:*",
+    "@uprm/promoter": "workspace:*",
     "@uprm/referrals": "workspace:*",
     "@uprm/reporting": "workspace:*",
+    "@uprm/settlements": "workspace:*",
     "@uprm/tenants": "workspace:*",
     "@uprm/webhooks": "workspace:*",
+    "bcryptjs": "^3.0.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.2",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
-  },
+  }
+,
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",

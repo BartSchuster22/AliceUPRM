@@ -30,6 +30,7 @@
     "@uprm/ledger": "workspace:*",
     "@uprm/payouts": "workspace:*",
     "@uprm/payments": "workspace:*",
+    "@uprm/promoter": "workspace:*",
     "@uprm/referrals": "workspace:*",
     "@uprm/tenants": "workspace:*",
     "class-transformer": "^0.5.1",

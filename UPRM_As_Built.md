@@ -4,6 +4,22 @@ Status of this file: milestone snapshot only, not the default live-state source.
 Current development state must be determined from `/srv/uprm` git state, current source files, schema, and live runtime/DB checks.
 Use this file only as a historical checkpoint describing what had been verified at the time it was last updated.
 
+Current live-state correction as of 2026-04-25:
+- this file is now materially stale as a full inventory snapshot
+- UPRM has moved beyond the Phase 6 payouts-only milestone captured below
+- the live repo/runtime now includes real promoter and settlement domains in addition to the already-live fraud/reporting/webhook work
+- newly verified live artifacts now include:
+  - `packages/domain/promoter`
+  - `packages/domain/settlements`
+  - `promoter_profiles`
+  - `promoter_applications`
+  - `promoter_application_links`
+  - `promoter_metrics_daily`
+  - `settlement_cycles`
+  - admin routes for promoter review and settlement cycle control
+  - worker metrics for promoter qualification rollups/transitions
+- therefore: do NOT use the package list, table count, or admin-endpoint inventory below as the current live truth without re-sighting the repo/runtime first
+
 Scope: what actually existed on the VPS and in `/srv/uprm` after Phase 6 payouts.
 This is not an always-current status file. It is a verified historical snapshot as of 2026-04-24 11:20:11 UTC.
 
@@ -114,7 +130,7 @@ packages/
     tenants
 ```
 
-Important note: the codebase is now ahead of the earlier Phase 0-5 snapshot because `@uprm/payouts` now exists and is live.
+Important note: the codebase moved far beyond this snapshot. In addition to `@uprm/payouts`, the live repo now also contains newer packages/domains such as promoter, reporting, payments, webhooks, fraud, and settlements.
 
 Git state at verification time:
 

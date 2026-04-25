@@ -14,6 +14,7 @@ import { TenantService } from '@uprm/tenants';
 import { IdentityService } from '@uprm/identity';
 import { ReferralService } from '@uprm/referrals';
 import { BalanceService } from '@uprm/ledger';
+import { PromoterService } from '@uprm/promoter';
 import { HmacAuthGuard } from '../auth/hmac-auth.guard';
 import { CreateUserDto } from './dto/create-user.dto';
 import { RequestPayoutDto } from './dto/request-payout.dto';
@@ -26,6 +27,7 @@ export class UsersController {
   private readonly tenantSvc = new TenantService();
   private readonly balanceSvc = new BalanceService();
   private readonly payoutSvc = new PayoutService();
+  private readonly promoterSvc = new PromoterService();
 
   @Post()
   async create(@Body() dto: CreateUserDto, @Req() req: any) {
@@ -102,6 +104,25 @@ export class UsersController {
         amount_minor: amountMinor,
         formatted: formatMinorCurrency(amountMinor, currency),
       },
+    };
+  }
+
+  @Get(':id/promoter-status')
+  async promoterStatus(@Param('id') id: string, @Req() req: any) {
+    const tenantId: string = req.uprm.tenantId;
+    const status = await this.promoterSvc.getPromoterStatus({
+      tenantId,
+      tenantUserId: id,
+    });
+
+    return {
+      tenant_user_id: id,
+      promoter_status: status.promoterStatus,
+      qualification_source: status.qualificationSource,
+      manual_override: Boolean(status.manualOverride),
+      effective_from: status.effectiveFrom ?? null,
+      effective_to: status.effectiveTo ?? null,
+      source: status.source,
     };
   }
 

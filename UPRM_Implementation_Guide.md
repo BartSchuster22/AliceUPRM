@@ -5,6 +5,8 @@
 > Note: this file is the roadmap/design guide, not the live state record.
 > Current development state must be determined from the live repo and VPS reality in this order: `git status/log` on `/srv/uprm`, actual source files/controllers/schema, and live runtime/DB checks.
 > `UPRM_As_Built.md` is only a milestone snapshot and may be stale between milestones; do not use it as the default source of current development status.
+>
+> Live-state correction as of 2026-04-25: the former promoter/settlement placeholder warning is no longer current. The live repo/runtime now has a real promoter domain (manual applications, promoter status, auto-qualification metrics/worker loop) and a real settlement-cycle domain (persistent settlement cycles plus admin list/detail/open/close). Treat promoter + settlement as completed implementation domains unless a fresh live sighting proves otherwise.
 
 - Admin subdomain: `uprm.aquiero.com`
 - First tenant: **PSI** (Prefabricated Software Instances)

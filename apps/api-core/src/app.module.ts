@@ -8,6 +8,7 @@ import { ReferralsModule } from './referrals/referrals.module';
 import { EventsModule } from './events/events.module';
 import { BillingModule } from './billing/billing.module';
 import { ProductsModule } from './products/products.module';
+import { PromoterApplicationsModule } from './promoter-applications/promoter-applications.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ProductsModule } from './products/products.module';
     EventsModule,
     BillingModule,
     ProductsModule,
+    PromoterApplicationsModule,
   ],
   controllers: [AppController],
   providers: [

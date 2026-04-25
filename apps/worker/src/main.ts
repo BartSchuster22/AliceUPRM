@@ -3,6 +3,7 @@ import * as http from 'node:http';
 import { OutboxRelayService, RabbitPublisher } from '@uprm/outbox';
 import { RewardConsumer } from './rewards/reward-consumer';
 import { RewardScheduler } from './rewards/scheduler';
+import { PromoterQualificationRunner } from './promoters/promoter-qualification';
 import { ReportingRollupRunner } from './reporting/reporting-rollup';
 import { WebhookDispatcher } from './webhooks/webhook-dispatcher';
 
@@ -28,6 +29,9 @@ async function main() {
 
   // Reporting rollups — rebuild analytics read models for admin dashboards
   const reporting = new ReportingRollupRunner();
+
+  // Promoter qualification — rolls up daily referral metrics and auto-promotes eligible users
+  const promoterQualifications = new PromoterQualificationRunner();
 
   // Metrics + healthz endpoint
   const port = Number(process.env.PORT) || 4002;
@@ -75,6 +79,14 @@ async function main() {
           `uprm_reporting_rollup_failures_total ${reporting.metrics.failures}`,
           `# TYPE uprm_reporting_last_success_unixtime gauge`,
           `uprm_reporting_last_success_unixtime ${reporting.metrics.lastSuccessUnix}`,
+          `# TYPE uprm_promoter_rollups_total counter`,
+          `uprm_promoter_rollups_total ${promoterQualifications.metrics.rollups}`,
+          `# TYPE uprm_promoter_transitions_total counter`,
+          `uprm_promoter_transitions_total ${promoterQualifications.metrics.transitions}`,
+          `# TYPE uprm_promoter_failures_total counter`,
+          `uprm_promoter_failures_total ${promoterQualifications.metrics.failures}`,
+          `# TYPE uprm_promoter_last_success_unixtime gauge`,
+          `uprm_promoter_last_success_unixtime ${promoterQualifications.metrics.lastSuccessUnix}`,
         ].join('\n') + '\n',
       );
       return;
@@ -92,6 +104,7 @@ async function main() {
     scheduler.stop();
     webhooks.stop();
     reporting.stop();
+    promoterQualifications.stop();
     try {
       await consumer.stop();
     } catch {}
@@ -113,6 +126,7 @@ async function main() {
     scheduler.startLoop(10_000),
     webhooks.startLoop(5_000),
     reporting.startLoop(),
+    promoterQualifications.startLoop(),
   ]);
 }
 

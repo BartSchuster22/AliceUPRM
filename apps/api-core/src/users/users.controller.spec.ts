@@ -1,7 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { UsersController } from './users.controller';
 
-describe('UsersController balance, profile, subscriptions, and payouts', () => {
+describe('UsersController balance, profile, subscriptions, promoter status, and payouts', () => {
   let controller: UsersController;
 
   beforeEach(() => {
@@ -178,6 +178,37 @@ describe('UsersController balance, profile, subscriptions, and payouts', () => {
         amount_minor: 0,
         formatted: '€0.00',
       },
+    });
+  });
+
+  it('returns promoter status by tenant user id', async () => {
+    (controller as any).promoterSvc = {
+      getPromoterStatus: jest.fn().mockResolvedValue({
+        promoterStatus: 'promoter',
+        qualificationSource: 'manual',
+        manualOverride: true,
+        effectiveFrom: '2026-04-25T00:00:00.000Z',
+        effectiveTo: null,
+        source: 'profile',
+      }),
+    };
+
+    const result = await (controller as any).promoterStatus('tu-promoter', {
+      uprm: { tenantId: 'tenant-1' },
+    });
+
+    expect((controller as any).promoterSvc.getPromoterStatus).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      tenantUserId: 'tu-promoter',
+    });
+    expect(result).toEqual({
+      tenant_user_id: 'tu-promoter',
+      promoter_status: 'promoter',
+      qualification_source: 'manual',
+      manual_override: true,
+      effective_from: '2026-04-25T00:00:00.000Z',
+      effective_to: null,
+      source: 'profile',
     });
   });
 

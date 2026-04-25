@@ -27,6 +27,7 @@
     "@uprm/db": "workspace:*",
     "@uprm/ledger": "workspace:*",
     "@uprm/outbox": "workspace:*",
+    "@uprm/promoter": "workspace:*",
     "@uprm/reporting": "workspace:*",
     "@uprm/rewards": "workspace:*",
     "@uprm/webhooks": "workspace:*",

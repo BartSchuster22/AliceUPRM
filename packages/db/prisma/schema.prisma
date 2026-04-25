@@ -290,6 +290,93 @@ model PayoutRequest {
   @@map("payout_requests")
 }
 
+model PromoterProfile {
+  id                  String    @id @default(uuid())
+  tenantId            String
+  tenantUserId        String
+  promoterStatus      String    @default("user") // user | promoter | pending_review | suspended | demoted
+  qualificationSource String    @default("manual") // auto | manual | none
+  manualOverride      Boolean   @default(false)
+  effectiveFrom       DateTime
+  effectiveTo         DateTime?
+  updatedAt           DateTime  @updatedAt
+
+  @@index([tenantId, tenantUserId, effectiveFrom])
+  @@index([tenantId, tenantUserId, effectiveTo])
+  @@map("promoter_profiles")
+}
+
+model PromoterApplication {
+  id                String   @id @default(uuid())
+  tenantId          String
+  tenantUserId      String
+  submittedAt       DateTime @default(now())
+  status            String   @default("submitted") // submitted | under_review | approved | rejected
+  reviewedByAdminId String?
+  reviewedAt        DateTime?
+  notes             String?
+  updatedAt         DateTime @updatedAt
+
+  links             PromoterApplicationLink[]
+
+  @@index([tenantId, tenantUserId, submittedAt])
+  @@index([tenantId, status, submittedAt])
+  @@map("promoter_applications")
+}
+
+model PromoterApplicationLink {
+  id                 String   @id @default(uuid())
+  applicationId      String
+  application        PromoterApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  linkType           String
+  url                String
+  verificationStatus String   @default("unverified") // unverified | verified | rejected
+  proofJson          Json?
+
+  @@index([applicationId])
+  @@map("promoter_application_links")
+}
+
+model PromoterMetricsDaily {
+  id                    String   @id @default(uuid())
+  tenantId              String
+  tenantUserId          String
+  date                  DateTime
+  newPaidReferralsCount Int      @default(0)
+  grossRevenueReferred  BigInt   @default(0)
+  netRewardGenerated    BigInt   @default(0)
+  refundCount           Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([tenantId, tenantUserId, date])
+  @@index([tenantId, date])
+  @@index([tenantUserId, date])
+  @@map("promoter_metrics_daily")
+}
+
+model SettlementCycle {
+  id                    String   @id @default(uuid())
+  tenantId              String
+  currency              String
+  periodStart           DateTime
+  periodEnd             DateTime
+  status                String   @default("open") // open | closed
+  ledgerLiabilityMinor  BigInt   @default(0)
+  pendingLiabilityMinor BigInt   @default(0)
+  totalLiabilityMinor   BigInt   @default(0)
+  note                  String?
+  openedByAdminId       String?
+  openedAt              DateTime @default(now())
+  closedByAdminId       String?
+  closedAt              DateTime?
+  updatedAt             DateTime @updatedAt
+
+  @@index([tenantId, status, openedAt])
+  @@index([tenantId, periodStart, periodEnd])
+  @@map("settlement_cycles")
+}
+
 model AdminUser {
   id           String   @id @default(uuid())
   subject      String   @unique
