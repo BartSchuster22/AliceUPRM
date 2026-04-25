@@ -122,6 +122,42 @@ export default function App() {
   const [settlementNote, setSettlementNote] = useState('');
   const [webhookDeliveries, setWebhookDeliveries] = useState<WebhookDeliveryRow[]>([]);
 
+  const selectedTenant = useMemo(
+    () => tenants.find((tenant) => tenant.id === selectedTenantId) ?? tenants[0] ?? null,
+    [selectedTenantId, tenants],
+  );
+
+  const selectedUser = useMemo(
+    () => users.find((user) => user.id === selectedUserId) ?? users[0] ?? null,
+    [selectedUserId, users],
+  );
+
+  const visiblePromoterApplications = useMemo(
+    () =>
+      selectedTenantId
+        ? promoterApplications.filter((application) => application.tenant_id === selectedTenantId)
+        : promoterApplications,
+    [promoterApplications, selectedTenantId],
+  );
+
+  const selectedVisiblePromoterApplication = useMemo(
+    () =>
+      visiblePromoterApplications.find(
+        (application) => application.id === selectedPromoterApplicationId,
+      ) ??
+      visiblePromoterApplications[0] ??
+      null,
+    [visiblePromoterApplications, selectedPromoterApplicationId],
+  );
+
+  const selectedSettlementCycle = useMemo(
+    () =>
+      settlementCycles.find((cycle) => cycle.id === selectedSettlementCycleId) ??
+      settlementCycles[0] ??
+      null,
+    [selectedSettlementCycleId, settlementCycles],
+  );
+
   useEffect(() => {
     const onPopState = () => setPathname(window.location.pathname || DASHBOARD_PATH);
     window.addEventListener('popstate', onPopState);
@@ -164,7 +200,7 @@ export default function App() {
       promoterConfig: prettyJson(selectedTenant.config?.promoterConfig ?? {}),
       fraudConfig: prettyJson(selectedTenant.config?.fraudConfig ?? {}),
     });
-  }, [selectedTenantId, tenants]);
+  }, [selectedTenant]);
 
   useEffect(() => {
     if (!token) return;
@@ -201,42 +237,6 @@ export default function App() {
   useEffect(() => {
     setPromoterReviewNote('');
   }, [selectedVisiblePromoterApplication?.id]);
-
-  const selectedTenant = useMemo(
-    () => tenants.find((tenant) => tenant.id === selectedTenantId) ?? tenants[0] ?? null,
-    [selectedTenantId, tenants],
-  );
-
-  const selectedUser = useMemo(
-    () => users.find((user) => user.id === selectedUserId) ?? users[0] ?? null,
-    [selectedUserId, users],
-  );
-
-  const visiblePromoterApplications = useMemo(
-    () =>
-      selectedTenantId
-        ? promoterApplications.filter((application) => application.tenant_id === selectedTenantId)
-        : promoterApplications,
-    [promoterApplications, selectedTenantId],
-  );
-
-  const selectedVisiblePromoterApplication = useMemo(
-    () =>
-      visiblePromoterApplications.find(
-        (application) => application.id === selectedPromoterApplicationId,
-      ) ??
-      visiblePromoterApplications[0] ??
-      null,
-    [visiblePromoterApplications, selectedPromoterApplicationId],
-  );
-
-  const selectedSettlementCycle = useMemo(
-    () =>
-      settlementCycles.find((cycle) => cycle.id === selectedSettlementCycleId) ??
-      settlementCycles[0] ??
-      null,
-    [selectedSettlementCycleId, settlementCycles],
-  );
 
   function navigate(nextPath: string, replace = false) {
     const normalized = nextPath === LOGIN_PATH ? LOGIN_PATH : DASHBOARD_PATH;
@@ -860,8 +860,28 @@ export default function App() {
                       <dd>{userDetail.tenant_user.tenant_status}</dd>
                     </div>
                     <div>
+                      <dt>Entity type</dt>
+                      <dd>{userDetail.tenant_user.entity_type || 'person'}</dd>
+                    </div>
+                    <div>
                       <dt>Joined</dt>
                       <dd>{formatDate(userDetail.tenant_user.joined_at)}</dd>
+                    </div>
+                    <div>
+                      <dt>Source tenant</dt>
+                      <dd>
+                        {userDetail.source_tenant
+                          ? `${userDetail.source_tenant.name} (${userDetail.source_tenant.slug})`
+                          : userDetail.tenant_user.source_tenant_id || '—'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Source user</dt>
+                      <dd>
+                        {userDetail.source_user
+                          ? `${userDetail.source_user.username || userDetail.source_user.email || userDetail.source_user.external_user_id} (${userDetail.source_user.entity_type})`
+                          : userDetail.tenant_user.source_tenant_user_id || '—'}
+                      </dd>
                     </div>
                     <div>
                       <dt>Wallet</dt>

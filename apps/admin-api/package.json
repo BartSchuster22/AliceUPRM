@@ -27,6 +27,7 @@
     "@uprm/db": "workspace:*",
     "@uprm/events": "workspace:*",
     "@uprm/fraud": "workspace:*",
+    "@uprm/identity": "workspace:*",
     "@uprm/ledger": "workspace:*",
     "@uprm/payments": "workspace:*",
     "@uprm/payouts": "workspace:*",
@@ -43,8 +44,7 @@
     "jsonwebtoken": "^9.0.2",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
-  }
-,
+  },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",

@@ -12,18 +12,24 @@ datasource db {
 // ============================================================
 
 model Tenant {
-  id            String   @id @default(uuid())
-  name          String
-  slug          String   @unique
-  status        String   @default("active")
-  baseCurrency  String   @default("EUR")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  name               String
+  slug               String   @unique
+  status             String   @default("active")
+  baseCurrency       String   @default("EUR")
+  ownerTenantUserId  String?  @unique
+  sourceTenantId     String?
+  sourceTenantUserId String?
+  isSystemTenant     Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  apiKeys       TenantApiKey[]
-  config        TenantConfig?
-  tenantUsers   TenantUser[]
+  apiKeys            TenantApiKey[]
+  config             TenantConfig?
+  tenantUsers        TenantUser[]
 
+  @@index([sourceTenantId])
+  @@index([sourceTenantUserId])
   @@map("tenants")
 }
 
@@ -72,19 +78,24 @@ model User {
 }
 
 model TenantUser {
-  id             String   @id @default(uuid())
-  tenantId       String
-  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  externalUserId String
-  username       String?
-  tenantStatus   String   @default("active")
-  joinedAt       DateTime @default(now())
-  metadata       Json     @default("{}")
+  id                 String   @id @default(uuid())
+  tenantId           String
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  externalUserId     String
+  username           String?
+  tenantStatus       String   @default("active")
+  entityType         String   @default("person")
+  sourceTenantId     String?
+  sourceTenantUserId String?
+  joinedAt           DateTime @default(now())
+  metadata           Json     @default("{}")
 
   @@unique([tenantId, externalUserId])
   @@index([userId])
+  @@index([sourceTenantId])
+  @@index([sourceTenantUserId])
   @@map("tenant_users")
 }
 

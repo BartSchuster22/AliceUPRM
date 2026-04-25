@@ -12,4 +12,14 @@ export class CreateUserDto {
   @IsString()
   @Length(1, 80)
   username?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 64)
+  sourceTenantUserId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 64)
+  sourceTenantId?: string;
 }

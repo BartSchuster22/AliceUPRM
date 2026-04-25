@@ -46,12 +46,24 @@ const SKEW_SECONDS = 300;
 export class TenantService {
   constructor(private db: PrismaClient = prisma) {}
 
-  async createTenant(input: { name: string; slug: string; baseCurrency?: string }): Promise<any> {
+  async createTenant(input: {
+    name: string;
+    slug: string;
+    baseCurrency?: string;
+    ownerTenantUserId?: string;
+    sourceTenantId?: string;
+    sourceTenantUserId?: string;
+    isSystemTenant?: boolean;
+  }): Promise<any> {
     return this.db.tenant.create({
       data: {
         name: input.name,
         slug: input.slug,
         baseCurrency: input.baseCurrency ?? 'EUR',
+        ownerTenantUserId: input.ownerTenantUserId ?? null,
+        sourceTenantId: input.sourceTenantId ?? null,
+        sourceTenantUserId: input.sourceTenantUserId ?? null,
+        isSystemTenant: input.isSystemTenant ?? false,
         config: { create: {} },
       },
       include: { config: true },

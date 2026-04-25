@@ -27,6 +27,9 @@ export interface TenantUserSummary {
   external_user_id: string;
   username: string | null;
   tenant_status: string;
+  entity_type: string;
+  source_tenant_id: string | null;
+  source_tenant_user_id: string | null;
   joined_at: string;
   metadata: Record<string, unknown>;
   email: string | null;
@@ -35,6 +38,21 @@ export interface TenantUserSummary {
 
 export interface TenantUserDetail {
   tenant_user: TenantUserSummary;
+  source_tenant: {
+    id: string;
+    name: string;
+    slug: string;
+    status: string;
+  } | null;
+  source_user: {
+    id: string;
+    tenant_id: string;
+    user_id: string;
+    external_user_id: string;
+    username: string | null;
+    entity_type: string;
+    email: string | null;
+  } | null;
   balance: {
     account_id: string;
     account_type: string;

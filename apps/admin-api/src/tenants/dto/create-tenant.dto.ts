@@ -16,4 +16,29 @@ export class CreateTenantDto {
   @IsString()
   @Length(3, 3)
   baseCurrency?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 64)
+  sourceTenantId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 64)
+  sourceTenantUserId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(3, 160)
+  ownerEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 128)
+  ownerExternalUserId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 80)
+  ownerUsername?: string;
 }

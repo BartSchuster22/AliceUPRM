@@ -108,6 +108,9 @@ function mapTenantUserSummary(row: any) {
     external_user_id: row.externalUserId,
     username: row.username,
     tenant_status: row.tenantStatus,
+    entity_type: row.entityType ?? 'person',
+    source_tenant_id: row.sourceTenantId ?? null,
+    source_tenant_user_id: row.sourceTenantUserId ?? null,
     joined_at: row.joinedAt,
     metadata: row.metadata,
     email: row.user?.emailNormalized ?? null,
@@ -118,6 +121,25 @@ function mapTenantUserSummary(row: any) {
 function mapUserDetail(detail: any) {
   return {
     tenant_user: mapTenantUserSummary(detail.tenantUser),
+    source_tenant: detail.sourceTenant
+      ? {
+          id: detail.sourceTenant.id,
+          name: detail.sourceTenant.name,
+          slug: detail.sourceTenant.slug,
+          status: detail.sourceTenant.status,
+        }
+      : null,
+    source_user: detail.sourceTenantUser
+      ? {
+          id: detail.sourceTenantUser.id,
+          tenant_id: detail.sourceTenantUser.tenantId,
+          user_id: detail.sourceTenantUser.userId,
+          external_user_id: detail.sourceTenantUser.externalUserId,
+          username: detail.sourceTenantUser.username,
+          entity_type: detail.sourceTenantUser.entityType ?? 'person',
+          email: detail.sourceTenantUser.user?.emailNormalized ?? null,
+        }
+      : null,
     balance: detail.balance
       ? {
           account_id: detail.balance.accountId,

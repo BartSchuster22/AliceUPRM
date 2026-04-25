@@ -59,6 +59,9 @@ export interface CreateUserInput {
   email: string;
   externalUserId: string;
   username?: string;
+  entityType?: 'person' | 'tenant' | 'system';
+  sourceTenantId?: string;
+  sourceTenantUserId?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -67,6 +70,7 @@ export class IdentityService {
 
   async findOrCreateTenantUser(input: CreateUserInput): Promise<any> {
     const email = normaliseEmail(input.email);
+    const entityType = input.entityType ?? 'person';
 
     const existing = await this.db.tenantUser.findUnique({
       where: {
@@ -78,6 +82,35 @@ export class IdentityService {
       include: { user: true },
     });
     if (existing) return existing;
+
+    let sourceTenantId = input.sourceTenantId;
+    let sourceTenantUserId = input.sourceTenantUserId;
+
+    if (entityType !== 'system') {
+      if (!sourceTenantUserId) {
+        throw new IdentityError(
+          'source tenant user is required for non-system users',
+          'SOURCE_REQUIRED',
+        );
+      }
+
+      const sourceTenantUser = await this.db.tenantUser.findFirst({
+        where: { id: sourceTenantUserId },
+        include: { user: true },
+      });
+      if (!sourceTenantUser) {
+        throw new IdentityError('source tenant user not found', 'SOURCE_NOT_FOUND');
+      }
+
+      if (sourceTenantId && sourceTenantId !== sourceTenantUser.tenantId) {
+        throw new IdentityError(
+          'source tenant does not match source user tenant',
+          'SOURCE_MISMATCH',
+        );
+      }
+
+      sourceTenantId = sourceTenantUser.tenantId;
+    }
 
     return this.db.$transaction(async (tx) => {
       const user = await tx.user.upsert({
@@ -92,6 +125,9 @@ export class IdentityService {
           userId: user.id,
           externalUserId: input.externalUserId,
           username: input.username ?? null,
+          entityType,
+          sourceTenantId: sourceTenantId ?? null,
+          sourceTenantUserId: sourceTenantUserId ?? null,
           metadata: (input.metadata ?? {}) as any,
         },
         include: { user: true },

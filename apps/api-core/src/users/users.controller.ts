@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -11,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { PayoutService } from '@uprm/payouts';
 import { TenantService } from '@uprm/tenants';
-import { IdentityService } from '@uprm/identity';
+import { IdentityError, IdentityService } from '@uprm/identity';
 import { ReferralService } from '@uprm/referrals';
 import { BalanceService } from '@uprm/ledger';
 import { PromoterService } from '@uprm/promoter';
@@ -32,13 +33,25 @@ export class UsersController {
   @Post()
   async create(@Body() dto: CreateUserDto, @Req() req: any) {
     const tenantId: string = req.uprm.tenantId;
-    const tu = await this.svc.findOrCreateTenantUser({
-      tenantId,
-      email: dto.email,
-      externalUserId: dto.externalUserId,
-      username: dto.username,
-    });
-    return { tenant_user: tu };
+    try {
+      const tu = await this.svc.findOrCreateTenantUser({
+        tenantId,
+        email: dto.email,
+        externalUserId: dto.externalUserId,
+        username: dto.username,
+        sourceTenantId: dto.sourceTenantId,
+        sourceTenantUserId: dto.sourceTenantUserId,
+      });
+      return { tenant_user: tu };
+    } catch (error) {
+      if (error instanceof IdentityError) {
+        throw new BadRequestException({
+          code: error.code,
+          message: error.message,
+        });
+      }
+      throw error;
+    }
   }
 
   @Get('external/:externalUserId/profile')

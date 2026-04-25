@@ -51,10 +51,26 @@ export class AdminUsersService {
     );
     const payouts = await this.payouts.listUserPayouts(tenantId, tenantUserId);
 
+    const [sourceTenant, sourceTenantUser] = await Promise.all([
+      tenantUser.sourceTenantId
+        ? this.db.tenant.findUnique({
+            where: { id: tenantUser.sourceTenantId },
+          })
+        : Promise.resolve(null),
+      tenantUser.sourceTenantUserId
+        ? this.db.tenantUser.findFirst({
+            where: { id: tenantUser.sourceTenantUserId },
+            include: { user: true },
+          })
+        : Promise.resolve(null),
+    ]);
+
     return {
       tenantUser,
       balance,
       payouts,
+      sourceTenant,
+      sourceTenantUser,
     };
   }
 

@@ -8,6 +8,8 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { prisma } from '@uprm/db';
+import { IdentityService } from '@uprm/identity';
 import { TenantService } from '@uprm/tenants';
 import { AuditService } from '../audit/audit.service';
 import { AdminJwtGuard } from '../auth/admin-jwt.guard';
@@ -22,23 +24,59 @@ import { UpdateTenantWebhookConfigDto } from './dto/update-tenant-webhook-config
 @UseGuards(AdminJwtGuard, RolesGuard)
 export class TenantsController {
   private readonly svc = new TenantService();
+  private readonly identity = new IdentityService();
   private readonly audit = new AuditService();
 
   @Post()
   @Roles('super_admin')
   async create(@Body() dto: CreateTenantDto, @Req() req: AdminRequestLike) {
+    const root = await this.ensureRootProvenance();
+    const sourceTenantId = dto.sourceTenantId ?? root.tenant.id;
+    const sourceTenantUserId = dto.sourceTenantUserId ?? root.tenantUser.id;
+
     const tenant = await this.svc.createTenant({
       name: dto.name,
       slug: dto.slug,
       baseCurrency: dto.baseCurrency,
+      sourceTenantId,
+      sourceTenantUserId,
     });
+
+    const ownerTenantUser = await this.identity.findOrCreateTenantUser({
+      tenantId: tenant.id,
+      email: dto.ownerEmail ?? `${dto.slug}@tenant.uprm.local`,
+      externalUserId: dto.ownerExternalUserId ?? `tenant:${dto.slug}`,
+      username: dto.ownerUsername ?? dto.name,
+      entityType: 'tenant',
+      sourceTenantId,
+      sourceTenantUserId,
+      metadata: {
+        tenantEntity: true,
+        tenantSlug: dto.slug,
+      },
+    });
+
+    await prisma.tenant.update({
+      where: { id: tenant.id },
+      data: { ownerTenantUserId: ownerTenantUser.id },
+    });
+
+    const hydratedTenant = await this.svc.getTenant(tenant.id);
     const apiKey = await this.svc.issueApiKey(tenant.id, [
       'events.write',
       'users.write',
     ]);
 
     const result = {
-      tenant,
+      tenant: hydratedTenant,
+      owner_tenant_user: {
+        id: ownerTenantUser.id,
+        external_user_id: ownerTenantUser.externalUserId,
+        username: ownerTenantUser.username,
+        entity_type: ownerTenantUser.entityType,
+        source_tenant_id: ownerTenantUser.sourceTenantId,
+        source_tenant_user_id: ownerTenantUser.sourceTenantUserId,
+      },
       api_key: {
         id: apiKey.id,
         key_prefix: apiKey.keyPrefix,
@@ -55,11 +93,50 @@ export class TenantsController {
         resourceType: 'tenant',
         resourceId: tenant.id,
         tenantId: tenant.id,
-        after: { tenant },
+        after: result,
       });
     }
 
     return result;
+  }
+
+  private async ensureRootProvenance() {
+    let tenant = await prisma.tenant.findUnique({ where: { slug: 'uprm' } });
+    if (!tenant) {
+      tenant = await this.svc.createTenant({
+        name: 'UPRM',
+        slug: 'uprm',
+        baseCurrency: 'EUR',
+        isSystemTenant: true,
+      });
+    }
+    if (!tenant) {
+      throw new Error('failed to ensure UPRM root tenant');
+    }
+
+    const tenantUser = await this.identity.findOrCreateTenantUser({
+      tenantId: tenant.id,
+      email: 'user0@uprm.local',
+      externalUserId: 'user0',
+      username: 'user0',
+      entityType: 'system',
+      metadata: {
+        systemRoot: true,
+      },
+    });
+
+    if (!tenant.ownerTenantUserId || !tenant.isSystemTenant) {
+      tenant = await prisma.tenant.update({
+        where: { id: tenant.id },
+        data: {
+          ownerTenantUserId: tenantUser.id,
+          isSystemTenant: true,
+        },
+        include: { config: true },
+      });
+    }
+
+    return { tenant, tenantUser };
   }
 
   @Get()
