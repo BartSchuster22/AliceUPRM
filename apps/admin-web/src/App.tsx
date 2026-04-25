@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import {
   createManualAdjustment,
+  closeSettlementCycle,
   fetchFraudCaseDetail,
   fetchFraudCases,
   fetchLedger,
@@ -25,8 +26,10 @@ import {
   fetchUsers,
   fetchWebhookDeliveries,
   login,
+  openSettlementCycle,
   replayWebhookDelivery,
   resolveFraudCase,
+  reviewPromoterApplication,
   updateTenantConfig,
   type FraudCaseDetail,
   type FraudCaseRow,
@@ -104,6 +107,7 @@ export default function App() {
   });
 
   const [promoterApplications, setPromoterApplications] = useState<PromoterApplicationRow[]>([]);
+  const [promoterReviewNote, setPromoterReviewNote] = useState('');
   const [reportDays, setReportDays] = useState(30);
   const [reports, setReports] = useState<ReportsOverview | null>(null);
   const [fraudCases, setFraudCases] = useState<FraudCaseRow[]>([]);
@@ -113,6 +117,7 @@ export default function App() {
   const [fraudStatusFilter, setFraudStatusFilter] = useState('');
   const [fraudSeverityFilter, setFraudSeverityFilter] = useState('');
   const [settlementCycles, setSettlementCycles] = useState<SettlementCycleRow[]>([]);
+  const [settlementNote, setSettlementNote] = useState('');
   const [webhookDeliveries, setWebhookDeliveries] = useState<WebhookDeliveryRow[]>([]);
 
   useEffect(() => {
@@ -398,6 +403,23 @@ export default function App() {
     }
   }
 
+  async function submitPromoterReview(id: string, action: 'approve' | 'reject') {
+    if (!token) return;
+    setLoading(true);
+    try {
+      await reviewPromoterApplication(token, id, action, promoterReviewNote.trim() || undefined);
+      setStatus(`Promoter application ${action}d.`);
+      setPromoterReviewNote('');
+      await loadPromoterState(token);
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : `Failed to ${action} promoter application.`,
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function loadReports(nextToken: string, tenantId: string, days: number) {
     if (!tenantId) {
       setReports(null);
@@ -478,6 +500,39 @@ export default function App() {
       );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Failed to load settlement cycles.');
+    }
+  }
+
+  async function submitOpenSettlementCycle() {
+    if (!token || !selectedTenantId) return;
+    setLoading(true);
+    try {
+      await openSettlementCycle(token, {
+        tenantId: selectedTenantId,
+        note: settlementNote.trim() || undefined,
+      });
+      setStatus('Settlement cycle opened.');
+      setSettlementNote('');
+      await loadSettlementState(token);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Failed to open settlement cycle.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitCloseSettlementCycle(id: string) {
+    if (!token) return;
+    setLoading(true);
+    try {
+      await closeSettlementCycle(token, id, settlementNote.trim() || undefined);
+      setStatus('Settlement cycle closed.');
+      setSettlementNote('');
+      await loadSettlementState(token);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Failed to close settlement cycle.');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -1015,6 +1070,15 @@ export default function App() {
         {view === 'promoters' && (
           <section className="panel">
             <h3>Promoter applications</h3>
+            <label className="field">
+              <span>Reviewer note</span>
+              <textarea
+                value={promoterReviewNote}
+                rows={3}
+                onChange={(event) => setPromoterReviewNote(event.target.value)}
+                placeholder="Optional note for approve/reject actions"
+              />
+            </label>
             {promoterApplications.length ? (
               <div className="table-wrap">
                 <table className="data-table">
@@ -1026,6 +1090,7 @@ export default function App() {
                       <th>Links</th>
                       <th>Reviewed</th>
                       <th>Notes</th>
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1037,6 +1102,28 @@ export default function App() {
                         <td>{row.links.length}</td>
                         <td>{row.reviewed_at ? formatDate(row.reviewed_at) : '—'}</td>
                         <td>{row.notes || '—'}</td>
+                        <td>
+                          {row.status === 'submitted' || row.status === 'under_review' ? (
+                            <div className="toolbar-inline">
+                              <button
+                                className="primary"
+                                onClick={() => void submitPromoterReview(row.id, 'approve')}
+                                disabled={loading}
+                              >
+                                Approve
+                              </button>
+                              <button
+                                className="secondary"
+                                onClick={() => void submitPromoterReview(row.id, 'reject')}
+                                disabled={loading}
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1207,6 +1294,23 @@ export default function App() {
         {view === 'settlements' && (
           <section className="panel">
             <h3>Settlement cycles</h3>
+            <div className="toolbar-inline">
+              <label className="field" style={{ flex: 1 }}>
+                <span>Settlement note</span>
+                <input
+                  value={settlementNote}
+                  onChange={(event) => setSettlementNote(event.target.value)}
+                  placeholder="Optional note for open/close actions"
+                />
+              </label>
+              <button
+                className="primary"
+                onClick={() => void submitOpenSettlementCycle()}
+                disabled={loading || !selectedTenantId}
+              >
+                Open cycle
+              </button>
+            </div>
             {settlementCycles.length ? (
               <div className="table-wrap">
                 <table className="data-table">
@@ -1219,6 +1323,7 @@ export default function App() {
                       <th>Pending liability</th>
                       <th>Total liability</th>
                       <th>Closed</th>
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1231,6 +1336,19 @@ export default function App() {
                         <td>{row.pending_liability_minor ?? '—'}</td>
                         <td>{row.total_liability_minor ?? '—'}</td>
                         <td>{row.closed_at ? formatDate(row.closed_at) : '—'}</td>
+                        <td>
+                          {row.status === 'open' ? (
+                            <button
+                              className="secondary"
+                              onClick={() => void submitCloseSettlementCycle(row.id)}
+                              disabled={loading}
+                            >
+                              Close
+                            </button>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

@@ -302,6 +302,19 @@ export async function fetchPromoterApplications(token: string): Promise<Promoter
   return request('/admin/promoter-applications', { headers: authHeaders(token) });
 }
 
+export async function reviewPromoterApplication(
+  token: string,
+  id: string,
+  action: 'approve' | 'reject',
+  note?: string,
+) {
+  return request(`/admin/promoter-applications/${id}/${action}`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(note ? { note } : {}),
+  });
+}
+
 export async function fetchFraudCases(
   token: string,
   filters: { tenantId?: string; status?: string; severity?: string } = {},
@@ -333,6 +346,25 @@ export async function resolveFraudCase(
 
 export async function fetchSettlementCycles(token: string): Promise<SettlementCycleRow[]> {
   return request('/admin/settlement-cycles', { headers: authHeaders(token) });
+}
+
+export async function openSettlementCycle(
+  token: string,
+  payload: { tenantId: string; note?: string },
+) {
+  return request('/admin/settlement-cycles/open', {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function closeSettlementCycle(token: string, id: string, note?: string) {
+  return request(`/admin/settlement-cycles/${id}/close`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(note ? { note } : {}),
+  });
 }
 
 export async function fetchWebhookDeliveries(
