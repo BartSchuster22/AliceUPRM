@@ -1,7 +1,11 @@
 # UPRM — As-Built Documentation
 
-Scope: what actually exists on the VPS and in `/srv/uprm` after Phase 6 payouts.
-This is not an aspirational plan. It is the verified current state as of 2026-04-24 11:20:11 UTC.
+Status of this file: milestone snapshot only, not the default live-state source.
+Current development state must be determined from `/srv/uprm` git state, current source files, schema, and live runtime/DB checks.
+Use this file only as a historical checkpoint describing what had been verified at the time it was last updated.
+
+Scope: what actually existed on the VPS and in `/srv/uprm` after Phase 6 payouts.
+This is not an always-current status file. It is a verified historical snapshot as of 2026-04-24 11:20:11 UTC.
 
 ---
 
@@ -436,9 +440,14 @@ Those are no longer roadmap items. They are current system state.
 
 From the actual current state, the highest-value next build target is:
 
-- Phase 7 Stripe webhook adapter
+- Phase 10 continuation: SDK + PSI cutover hardening
 
 Reason:
 
-- it connects real payment-provider events into the event/reward/ledger/payout pipeline that now already exists
-- it is the most natural continuation after the current backend foundation
+- the older recommendation in this section is stale and has been overtaken by later completed work
+- direct Stripe billing authority, webhook delivery, fraud workflows, and reporting read models are already implemented in the live repo/runtime
+- the clearest remaining strategic gap is the missing reusable `packages/clients/uprm-client` plus production-safe PSI cutover/reconciliation work
+
+Canonical next execution document:
+
+- `docs/plans/2026-04-25-phase-10-continuation-sdk-and-psi-cutover.md`

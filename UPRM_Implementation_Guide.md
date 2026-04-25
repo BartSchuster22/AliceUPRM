@@ -2,7 +2,9 @@
 
 **Structured Implementation Guide & Prompt-by-Prompt Build Plan for the Coding AI Agent**
 
-> Note: this file is the design/implementation guide. The current verified runtime baseline now lives in `UPRM_As_Built.md` at the repo root and should be treated as the authoritative as-built state document.
+> Note: this file is the roadmap/design guide, not the live state record.
+> Current development state must be determined from the live repo and VPS reality in this order: `git status/log` on `/srv/uprm`, actual source files/controllers/schema, and live runtime/DB checks.
+> `UPRM_As_Built.md` is only a milestone snapshot and may be stale between milestones; do not use it as the default source of current development status.
 
 - Admin subdomain: `uprm.aquiero.com`
 - First tenant: **PSI** (Prefabricated Software Instances)
@@ -1031,6 +1033,10 @@ This section is the **working paper for the coding AI agent**. Each numbered pro
 ---
 
 ## Phase 10 — PSI Integration
+
+Status note from live repo state: this is now the canonical next execution area, but it must be continued from current live UPRM reality rather than from a greenfield Phase 10 assumption. Phase 8, Phase 9.1, Phase 9.2, and Phase 9.3 have already been implemented in the live repo/runtime. The canonical continuation plan for remaining Phase 10 work is:
+
+- `docs/plans/2026-04-25-phase-10-continuation-sdk-and-psi-cutover.md`
 
 ### PROMPT P10.1 — PSI-side UPRM client SDK
 
