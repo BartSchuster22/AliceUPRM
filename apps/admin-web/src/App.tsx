@@ -107,6 +107,7 @@ export default function App() {
   });
 
   const [promoterApplications, setPromoterApplications] = useState<PromoterApplicationRow[]>([]);
+  const [selectedPromoterApplicationId, setSelectedPromoterApplicationId] = useState('');
   const [promoterReviewNote, setPromoterReviewNote] = useState('');
   const [reportDays, setReportDays] = useState(30);
   const [reports, setReports] = useState<ReportsOverview | null>(null);
@@ -183,6 +184,23 @@ export default function App() {
     }
   }, [view, token, selectedTenantId, reportDays, fraudStatusFilter, fraudSeverityFilter]);
 
+  useEffect(() => {
+    const nextSelectedId =
+      visiblePromoterApplications.find(
+        (application) => application.id === selectedPromoterApplicationId,
+      )?.id ??
+      visiblePromoterApplications[0]?.id ??
+      '';
+
+    if (nextSelectedId !== selectedPromoterApplicationId) {
+      setSelectedPromoterApplicationId(nextSelectedId);
+    }
+  }, [visiblePromoterApplications, selectedPromoterApplicationId]);
+
+  useEffect(() => {
+    setPromoterReviewNote('');
+  }, [selectedVisiblePromoterApplication?.id]);
+
   const selectedTenant = useMemo(
     () => tenants.find((tenant) => tenant.id === selectedTenantId) ?? tenants[0] ?? null,
     [selectedTenantId, tenants],
@@ -191,6 +209,24 @@ export default function App() {
   const selectedUser = useMemo(
     () => users.find((user) => user.id === selectedUserId) ?? users[0] ?? null,
     [selectedUserId, users],
+  );
+
+  const visiblePromoterApplications = useMemo(
+    () =>
+      selectedTenantId
+        ? promoterApplications.filter((application) => application.tenant_id === selectedTenantId)
+        : promoterApplications,
+    [promoterApplications, selectedTenantId],
+  );
+
+  const selectedVisiblePromoterApplication = useMemo(
+    () =>
+      visiblePromoterApplications.find(
+        (application) => application.id === selectedPromoterApplicationId,
+      ) ??
+      visiblePromoterApplications[0] ??
+      null,
+    [visiblePromoterApplications, selectedPromoterApplicationId],
   );
 
   function navigate(nextPath: string, replace = false) {
@@ -218,6 +254,31 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function refreshCurrentView() {
+    if (!token) return;
+    if (view === 'webhooks') {
+      await loadWebhookDeliveries(token);
+      return;
+    }
+    if (view === 'promoters') {
+      await loadPromoterState(token);
+      return;
+    }
+    if (view === 'reports') {
+      await loadReports(token, selectedTenantId, reportDays);
+      return;
+    }
+    if (view === 'fraud') {
+      await loadFraudState(token);
+      return;
+    }
+    if (view === 'settlements') {
+      await loadSettlementState(token);
+      return;
+    }
+    await loadTenants(token);
   }
 
   async function loadUsers(nextToken: string, tenantId: string, query = '') {
@@ -393,6 +454,9 @@ export default function App() {
     try {
       const rows = await fetchPromoterApplications(nextToken);
       setPromoterApplications(rows);
+      setSelectedPromoterApplicationId((current) =>
+        current && rows.some((row) => row.id === current) ? current : (rows[0]?.id ?? ''),
+      );
       setStatus(
         rows.length
           ? `Loaded ${rows.length} promoter application(s).`
@@ -400,6 +464,8 @@ export default function App() {
       );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Failed to load promoter applications.');
+      setPromoterApplications([]);
+      setSelectedPromoterApplicationId('');
     }
   }
 
@@ -630,7 +696,7 @@ export default function App() {
           </div>
           <button
             className="secondary"
-            onClick={() => void loadTenants(token)}
+            onClick={() => void refreshCurrentView()}
             disabled={!token || loading}
           >
             Refresh
@@ -1068,70 +1134,165 @@ export default function App() {
         )}
 
         {view === 'promoters' && (
-          <section className="panel">
-            <h3>Promoter applications</h3>
-            <label className="field">
-              <span>Reviewer note</span>
-              <textarea
-                value={promoterReviewNote}
-                rows={3}
-                onChange={(event) => setPromoterReviewNote(event.target.value)}
-                placeholder="Optional note for approve/reject actions"
-              />
-            </label>
-            {promoterApplications.length ? (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Submitted</th>
-                      <th>Tenant user</th>
-                      <th>Status</th>
-                      <th>Links</th>
-                      <th>Reviewed</th>
-                      <th>Notes</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {promoterApplications.map((row) => (
-                      <tr key={row.id}>
-                        <td>{row.submitted_at ? formatDate(row.submitted_at) : '—'}</td>
-                        <td>{row.tenant_user_id}</td>
-                        <td>{row.status}</td>
-                        <td>{row.links.length}</td>
-                        <td>{row.reviewed_at ? formatDate(row.reviewed_at) : '—'}</td>
-                        <td>{row.notes || '—'}</td>
-                        <td>
-                          {row.status === 'submitted' || row.status === 'under_review' ? (
-                            <div className="toolbar-inline">
-                              <button
-                                className="primary"
-                                onClick={() => void submitPromoterReview(row.id, 'approve')}
-                                disabled={loading}
-                              >
-                                Approve
-                              </button>
-                              <button
-                                className="secondary"
-                                onClick={() => void submitPromoterReview(row.id, 'reject')}
-                                disabled={loading}
-                              >
-                                Reject
-                              </button>
-                            </div>
-                          ) : (
-                            '—'
-                          )}
-                        </td>
+          <section className="panel-grid panel-grid-wide">
+            <section className="panel">
+              <h3>Promoter applications</h3>
+              <p className="muted">
+                Showing{' '}
+                {selectedTenant ? `${selectedTenant.name} (${selectedTenant.slug})` : 'all tenants'}{' '}
+                promoter applications.
+              </p>
+              {visiblePromoterApplications.length ? (
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Submitted</th>
+                        <th>Tenant user</th>
+                        <th>Status</th>
+                        <th>Links</th>
+                        <th>Reviewed</th>
+                        <th>Notes</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="muted">No promoter applications recorded yet.</p>
-            )}
+                    </thead>
+                    <tbody>
+                      {visiblePromoterApplications.map((row) => (
+                        <tr
+                          key={row.id}
+                          className={
+                            row.id === selectedVisiblePromoterApplication?.id
+                              ? 'interactive-row selected'
+                              : 'interactive-row'
+                          }
+                          onClick={() => setSelectedPromoterApplicationId(row.id)}
+                        >
+                          <td>{row.submitted_at ? formatDate(row.submitted_at) : '—'}</td>
+                          <td>{row.tenant_user_id}</td>
+                          <td>{row.status}</td>
+                          <td>{row.links.length}</td>
+                          <td>{row.reviewed_at ? formatDate(row.reviewed_at) : '—'}</td>
+                          <td>{row.notes || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="muted">
+                  No promoter applications recorded for the selected tenant yet.
+                </p>
+              )}
+            </section>
+            <section className="panel">
+              <h3>Application detail</h3>
+              {selectedVisiblePromoterApplication ? (
+                <>
+                  <dl className="detail-list">
+                    <div>
+                      <dt>ID</dt>
+                      <dd>{selectedVisiblePromoterApplication.id}</dd>
+                    </div>
+                    <div>
+                      <dt>Tenant ID</dt>
+                      <dd>{selectedVisiblePromoterApplication.tenant_id}</dd>
+                    </div>
+                    <div>
+                      <dt>Tenant user ID</dt>
+                      <dd>{selectedVisiblePromoterApplication.tenant_user_id}</dd>
+                    </div>
+                    <div>
+                      <dt>Submitted at</dt>
+                      <dd>
+                        {selectedVisiblePromoterApplication.submitted_at
+                          ? formatDate(selectedVisiblePromoterApplication.submitted_at)
+                          : '—'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Status</dt>
+                      <dd>{selectedVisiblePromoterApplication.status}</dd>
+                    </div>
+                    <div>
+                      <dt>Reviewed at</dt>
+                      <dd>
+                        {selectedVisiblePromoterApplication.reviewed_at
+                          ? formatDate(selectedVisiblePromoterApplication.reviewed_at)
+                          : '—'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Reviewed by admin ID</dt>
+                      <dd>{selectedVisiblePromoterApplication.reviewed_by_admin_id || '—'}</dd>
+                    </div>
+                  </dl>
+                  <div>
+                    <div className="field-label">Notes</div>
+                    <pre>{selectedVisiblePromoterApplication.notes || '—'}</pre>
+                  </div>
+                  <label className="field">
+                    <span>Reviewer note</span>
+                    <textarea
+                      value={promoterReviewNote}
+                      rows={3}
+                      onChange={(event) => setPromoterReviewNote(event.target.value)}
+                      placeholder="Optional note for approve/reject actions"
+                    />
+                  </label>
+                  {(selectedVisiblePromoterApplication.status === 'submitted' ||
+                    selectedVisiblePromoterApplication.status === 'under_review') && (
+                    <div className="toolbar-inline">
+                      <button
+                        className="primary"
+                        onClick={() =>
+                          void submitPromoterReview(
+                            selectedVisiblePromoterApplication.id,
+                            'approve',
+                          )
+                        }
+                        disabled={loading}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        className="secondary"
+                        onClick={() =>
+                          void submitPromoterReview(selectedVisiblePromoterApplication.id, 'reject')
+                        }
+                        disabled={loading}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  )}
+                  <div>
+                    <div className="field-label">Links</div>
+                    {selectedVisiblePromoterApplication.links.length ? (
+                      <ul className="data-list">
+                        {selectedVisiblePromoterApplication.links.map((link) => (
+                          <li key={link.id}>
+                            <strong>{link.link_type}</strong> · {link.verification_status}
+                            <br />
+                            <a href={link.url} target="_blank" rel="noreferrer">
+                              {link.url}
+                            </a>
+                            {link.proof_json ? (
+                              <>
+                                <div className="field-label proof-json-label">Proof JSON</div>
+                                <pre>{prettyJson(link.proof_json)}</pre>
+                              </>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="muted">No application links provided.</p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="muted">Select a promoter application to inspect it.</p>
+              )}
+            </section>
           </section>
         )}
         {view === 'fraud' && (

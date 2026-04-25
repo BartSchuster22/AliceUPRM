@@ -236,6 +236,43 @@ input {
   background: rgba(255, 255, 255, 0.04);
 }
 
+.table-wrap {
+  overflow: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  vertical-align: top;
+}
+
+.data-table th {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #90a3d2;
+}
+
+.interactive-row {
+  cursor: pointer;
+}
+
+.interactive-row:hover,
+.interactive-row.selected {
+  background: rgba(118, 142, 255, 0.12);
+}
+
+a {
+  color: #9db0ff;
+}
+
 .tenant-button span,
 .tenant-button small {
   display: block;
@@ -271,6 +308,10 @@ pre {
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.3);
   overflow: auto;
+}
+
+.proof-json-label {
+  margin-top: 12px;
 }
 
 @media (max-width: 960px) {

@@ -409,7 +409,14 @@ async function request(path: string, init: RequestInit) {
     const body = await safeRead(response);
     throw new Error(body || `Request failed (${response.status})`);
   }
-  return response.json();
+  if (response.status === 204) {
+    return null;
+  }
+  const text = await safeRead(response);
+  if (!text.trim()) {
+    return null;
+  }
+  return JSON.parse(text);
 }
 
 async function safeRead(response: Response) {
