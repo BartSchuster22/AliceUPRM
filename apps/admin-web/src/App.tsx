@@ -118,6 +118,7 @@ export default function App() {
   const [fraudStatusFilter, setFraudStatusFilter] = useState('');
   const [fraudSeverityFilter, setFraudSeverityFilter] = useState('');
   const [settlementCycles, setSettlementCycles] = useState<SettlementCycleRow[]>([]);
+  const [selectedSettlementCycleId, setSelectedSettlementCycleId] = useState('');
   const [settlementNote, setSettlementNote] = useState('');
   const [webhookDeliveries, setWebhookDeliveries] = useState<WebhookDeliveryRow[]>([]);
 
@@ -227,6 +228,14 @@ export default function App() {
       visiblePromoterApplications[0] ??
       null,
     [visiblePromoterApplications, selectedPromoterApplicationId],
+  );
+
+  const selectedSettlementCycle = useMemo(
+    () =>
+      settlementCycles.find((cycle) => cycle.id === selectedSettlementCycleId) ??
+      settlementCycles[0] ??
+      null,
+    [selectedSettlementCycleId, settlementCycles],
   );
 
   function navigate(nextPath: string, replace = false) {
@@ -561,10 +570,18 @@ export default function App() {
     try {
       const rows = await fetchSettlementCycles(nextToken);
       setSettlementCycles(rows);
+      setSelectedSettlementCycleId((current) => {
+        if (current && rows.some((row) => row.id === current)) {
+          return current;
+        }
+        return rows.find((row) => row.status === 'open')?.id ?? rows[0]?.id ?? '';
+      });
       setStatus(
         rows.length ? `Loaded ${rows.length} settlement cycle(s).` : 'No settlement cycles found.',
       );
     } catch (error) {
+      setSettlementCycles([]);
+      setSelectedSettlementCycleId('');
       setStatus(error instanceof Error ? error.message : 'Failed to load settlement cycles.');
     }
   }
@@ -1453,71 +1470,155 @@ export default function App() {
           </section>
         )}
         {view === 'settlements' && (
-          <section className="panel">
-            <h3>Settlement cycles</h3>
-            <div className="toolbar-inline">
-              <label className="field" style={{ flex: 1 }}>
-                <span>Settlement note</span>
-                <input
-                  value={settlementNote}
-                  onChange={(event) => setSettlementNote(event.target.value)}
-                  placeholder="Optional note for open/close actions"
-                />
-              </label>
-              <button
-                className="primary"
-                onClick={() => void submitOpenSettlementCycle()}
-                disabled={loading || !selectedTenantId}
-              >
-                Open cycle
-              </button>
-            </div>
-            {settlementCycles.length ? (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Opened</th>
-                      <th>Status</th>
-                      <th>Currency</th>
-                      <th>Ledger liability</th>
-                      <th>Pending liability</th>
-                      <th>Total liability</th>
-                      <th>Closed</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {settlementCycles.map((row) => (
-                      <tr key={row.id}>
-                        <td>{row.opened_at ? formatDate(row.opened_at) : '—'}</td>
-                        <td>{row.status}</td>
-                        <td>{row.currency}</td>
-                        <td>{row.ledger_liability_minor ?? '—'}</td>
-                        <td>{row.pending_liability_minor ?? '—'}</td>
-                        <td>{row.total_liability_minor ?? '—'}</td>
-                        <td>{row.closed_at ? formatDate(row.closed_at) : '—'}</td>
-                        <td>
-                          {row.status === 'open' ? (
-                            <button
-                              className="secondary"
-                              onClick={() => void submitCloseSettlementCycle(row.id)}
-                              disabled={loading}
-                            >
-                              Close
-                            </button>
-                          ) : (
-                            '—'
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <section className="panel-grid panel-grid-wide">
+            <section className="panel">
+              <h3>Settlement cycles</h3>
+              <div className="toolbar-inline">
+                <label className="field" style={{ flex: 1 }}>
+                  <span>Settlement note</span>
+                  <input
+                    value={settlementNote}
+                    onChange={(event) => setSettlementNote(event.target.value)}
+                    placeholder="Optional note for open/close actions"
+                  />
+                </label>
+                <button
+                  className="primary"
+                  onClick={() => void submitOpenSettlementCycle()}
+                  disabled={loading || !selectedTenantId}
+                >
+                  Open cycle
+                </button>
               </div>
-            ) : (
-              <p className="muted">No settlement cycles recorded yet.</p>
-            )}
+              {settlementCycles.length ? (
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Opened</th>
+                        <th>Status</th>
+                        <th>Currency</th>
+                        <th>Ledger liability</th>
+                        <th>Pending liability</th>
+                        <th>Total liability</th>
+                        <th>Closed</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {settlementCycles.map((row) => (
+                        <tr
+                          key={row.id}
+                          className={
+                            row.id === selectedSettlementCycle?.id
+                              ? 'interactive-row selected'
+                              : 'interactive-row'
+                          }
+                          onClick={() => setSelectedSettlementCycleId(row.id)}
+                        >
+                          <td>{row.opened_at ? formatDate(row.opened_at) : '—'}</td>
+                          <td>{row.status}</td>
+                          <td>{row.currency}</td>
+                          <td>{row.ledger_liability_minor ?? '—'}</td>
+                          <td>{row.pending_liability_minor ?? '—'}</td>
+                          <td>{row.total_liability_minor ?? '—'}</td>
+                          <td>{row.closed_at ? formatDate(row.closed_at) : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="muted">
+                  No settlement cycles recorded yet. Use “Open cycle” to create the first one.
+                </p>
+              )}
+            </section>
+            <section className="panel">
+              <h3>Settlement detail</h3>
+              {selectedSettlementCycle ? (
+                <>
+                  <dl className="detail-list">
+                    <div>
+                      <dt>ID</dt>
+                      <dd>{selectedSettlementCycle.id}</dd>
+                    </div>
+                    <div>
+                      <dt>Tenant ID</dt>
+                      <dd>{selectedSettlementCycle.tenant_id}</dd>
+                    </div>
+                    <div>
+                      <dt>Currency</dt>
+                      <dd>{selectedSettlementCycle.currency}</dd>
+                    </div>
+                    <div>
+                      <dt>Status</dt>
+                      <dd>{selectedSettlementCycle.status}</dd>
+                    </div>
+                    <div>
+                      <dt>Period start</dt>
+                      <dd>{formatDate(selectedSettlementCycle.period_start)}</dd>
+                    </div>
+                    <div>
+                      <dt>Period end</dt>
+                      <dd>{formatDate(selectedSettlementCycle.period_end)}</dd>
+                    </div>
+                    <div>
+                      <dt>Ledger liability minor</dt>
+                      <dd>{selectedSettlementCycle.ledger_liability_minor ?? '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Pending liability minor</dt>
+                      <dd>{selectedSettlementCycle.pending_liability_minor ?? '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Total liability minor</dt>
+                      <dd>{selectedSettlementCycle.total_liability_minor ?? '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Opened by admin ID</dt>
+                      <dd>{selectedSettlementCycle.opened_by_admin_id ?? '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Opened at</dt>
+                      <dd>
+                        {selectedSettlementCycle.opened_at
+                          ? formatDate(selectedSettlementCycle.opened_at)
+                          : '—'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Closed by admin ID</dt>
+                      <dd>{selectedSettlementCycle.closed_by_admin_id ?? '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Closed at</dt>
+                      <dd>
+                        {selectedSettlementCycle.closed_at
+                          ? formatDate(selectedSettlementCycle.closed_at)
+                          : '—'}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div>
+                    <div className="field-label">Note</div>
+                    <pre>{selectedSettlementCycle.note || '—'}</pre>
+                  </div>
+                  {selectedSettlementCycle.status === 'open' && (
+                    <div className="toolbar-inline">
+                      <button
+                        className="secondary"
+                        onClick={() => void submitCloseSettlementCycle(selectedSettlementCycle.id)}
+                        disabled={loading}
+                      >
+                        Close cycle
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="muted">Select a settlement cycle to inspect it.</p>
+              )}
+            </section>
           </section>
         )}
       </main>
