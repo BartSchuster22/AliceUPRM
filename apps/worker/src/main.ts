@@ -3,6 +3,7 @@ import * as http from 'node:http';
 import { OutboxRelayService, RabbitPublisher } from '@uprm/outbox';
 import { RewardConsumer } from './rewards/reward-consumer';
 import { RewardScheduler } from './rewards/scheduler';
+import { ReportingRollupRunner } from './reporting/reporting-rollup';
 import { WebhookDispatcher } from './webhooks/webhook-dispatcher';
 
 async function main() {
@@ -24,6 +25,9 @@ async function main() {
 
   // Outbound webhook dispatcher — polls webhook_deliveries and delivers signed callbacks
   const webhooks = new WebhookDispatcher();
+
+  // Reporting rollups — rebuild analytics read models for admin dashboards
+  const reporting = new ReportingRollupRunner();
 
   // Metrics + healthz endpoint
   const port = Number(process.env.PORT) || 4002;
@@ -65,6 +69,12 @@ async function main() {
           `uprm_webhooks_replayed_total ${webhooks.metrics.replayed}`,
           `# TYPE uprm_webhooks_batches_total counter`,
           `uprm_webhooks_batches_total ${webhooks.metrics.batches}`,
+          `# TYPE uprm_reporting_rollups_total counter`,
+          `uprm_reporting_rollups_total ${reporting.metrics.rollups}`,
+          `# TYPE uprm_reporting_rollup_failures_total counter`,
+          `uprm_reporting_rollup_failures_total ${reporting.metrics.failures}`,
+          `# TYPE uprm_reporting_last_success_unixtime gauge`,
+          `uprm_reporting_last_success_unixtime ${reporting.metrics.lastSuccessUnix}`,
         ].join('\n') + '\n',
       );
       return;
@@ -81,6 +91,7 @@ async function main() {
     relay.stop();
     scheduler.stop();
     webhooks.stop();
+    reporting.stop();
     try {
       await consumer.stop();
     } catch {}
@@ -101,6 +112,7 @@ async function main() {
     relay.startLoop({ intervalMs: 1000, batchSize: 50, maxAttempts: 10 }),
     scheduler.startLoop(10_000),
     webhooks.startLoop(5_000),
+    reporting.startLoop(),
   ]);
 }
 

@@ -9,6 +9,7 @@ import { BootstrapModule } from './bootstrap/bootstrap.module';
 import { FraudModule } from './fraud/fraud.module';
 import { PayoutsModule } from './payouts/payouts.module';
 import { PromotersModule } from './promoters/promoters.module';
+import { ReportingModule } from './reporting/reporting.module';
 import { SettlementsModule } from './settlements/settlements.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { UsersModule } from './users/users.module';
@@ -25,6 +26,7 @@ import { StripeWebhooksModule } from './webhooks/stripe-webhooks.module';
     PayoutsModule,
     PromotersModule,
     FraudModule,
+    ReportingModule,
     SettlementsModule,
     StripeWebhooksModule,
   ],

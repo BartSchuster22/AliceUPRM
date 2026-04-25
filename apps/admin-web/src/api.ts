@@ -142,6 +142,39 @@ export interface WebhookDeliveryRow {
   updated_at: string;
 }
 
+export interface ReportsOverview {
+  tenant_id: string;
+  range_days: number;
+  conversion_daily: Array<{
+    day: string;
+    event_type: string;
+    event_count: number;
+    distinct_external_users: number;
+    distinct_tenant_users: number;
+  }>;
+  reward_performance_daily: Array<{
+    day: string;
+    currency: string;
+    reward_entry_count: number;
+    reward_expense_minor: string;
+    distinct_beneficiary_users: number;
+    posted_scheduled_count: number;
+  }>;
+  tenant_liability_daily: Array<{
+    day: string;
+    currency: string;
+    raw_liability_minor: string;
+    display_liability_minor: string;
+    account_count: number;
+  }>;
+  cohort_retention_daily: Array<{
+    cohort_day: string;
+    activity_day: string;
+    cohort_size: number;
+    retained_users: number;
+  }>;
+}
+
 export async function login(email: string, password: string): Promise<LoginResponse> {
   return request('/auth/login', {
     method: 'POST',
@@ -288,6 +321,17 @@ export async function fetchWebhookDeliveries(
 export async function replayWebhookDelivery(token: string, id: string) {
   return request(`/admin/webhook-deliveries/${id}/replay`, {
     method: 'POST',
+    headers: authHeaders(token),
+  });
+}
+
+export async function fetchReports(
+  token: string,
+  tenantId: string,
+  days = 30,
+): Promise<ReportsOverview> {
+  const params = new URLSearchParams({ tenantId, days: String(days) });
+  return request(`/admin/reports/overview?${params.toString()}`, {
     headers: authHeaders(token),
   });
 }

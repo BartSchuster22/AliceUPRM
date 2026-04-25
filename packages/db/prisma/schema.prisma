@@ -433,3 +433,68 @@ model RewardHold {
   @@index([tenantUserId, status])
   @@map("reward_holds")
 }
+
+model ConversionDaily {
+  id                    String   @id @default(uuid())
+  tenantId              String
+  day                   DateTime
+  eventType             String
+  eventCount            Int
+  distinctExternalUsers Int
+  distinctTenantUsers   Int
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([tenantId, day, eventType])
+  @@index([tenantId, day])
+  @@map("conversion_daily")
+}
+
+model RewardPerformanceDaily {
+  id                       String   @id @default(uuid())
+  tenantId                 String
+  day                      DateTime
+  currency                 String
+  rewardEntryCount         Int
+  rewardExpenseMinor       BigInt
+  distinctBeneficiaryUsers Int
+  postedScheduledCount     Int
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@unique([tenantId, day, currency])
+  @@index([tenantId, day])
+  @@map("reward_performance_daily")
+}
+
+model TenantLiabilityDaily {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  day                  DateTime
+  currency             String
+  rawLiabilityMinor    BigInt
+  displayLiabilityMinor BigInt
+  accountCount         Int
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([tenantId, day, currency])
+  @@index([tenantId, day])
+  @@map("tenant_liability_daily")
+}
+
+model CohortRetentionDaily {
+  id            String   @id @default(uuid())
+  tenantId      String
+  cohortDay     DateTime
+  activityDay   DateTime
+  cohortSize    Int
+  retainedUsers Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([tenantId, cohortDay, activityDay])
+  @@index([tenantId, cohortDay])
+  @@index([tenantId, activityDay])
+  @@map("cohort_retention_daily")
+}

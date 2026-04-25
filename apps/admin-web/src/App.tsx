@@ -1,4 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import {
   createManualAdjustment,
   fetchFraudCaseDetail,
@@ -6,6 +18,7 @@ import {
   fetchLedger,
   fetchPromoterApplications,
   fetchReferralTree,
+  fetchReports,
   fetchSettlementCycles,
   fetchTenants,
   fetchUserDetail,
@@ -19,13 +32,22 @@ import {
   type FraudCaseRow,
   type LedgerRow,
   type PlaceholderListResponse,
+  type ReportsOverview,
   type TenantRecord,
   type TenantUserDetail,
   type TenantUserSummary,
   type WebhookDeliveryRow,
 } from './api';
 
-type ViewKey = 'tenants' | 'users' | 'wallets' | 'promoters' | 'fraud' | 'settlements' | 'webhooks';
+type ViewKey =
+  | 'tenants'
+  | 'users'
+  | 'wallets'
+  | 'reports'
+  | 'promoters'
+  | 'fraud'
+  | 'settlements'
+  | 'webhooks';
 
 type ReferralRow = {
   tenantId: string;
@@ -39,6 +61,7 @@ const NAV_ITEMS: Array<{ key: ViewKey; label: string }> = [
   { key: 'tenants', label: 'Tenants' },
   { key: 'users', label: 'Users' },
   { key: 'wallets', label: 'Wallets' },
+  { key: 'reports', label: 'Reports' },
   { key: 'webhooks', label: 'Webhooks' },
   { key: 'promoters', label: 'Promoters' },
   { key: 'fraud', label: 'Fraud' },
@@ -80,6 +103,8 @@ export default function App() {
   });
 
   const [promoterState, setPromoterState] = useState<PlaceholderListResponse | null>(null);
+  const [reportDays, setReportDays] = useState(30);
+  const [reports, setReports] = useState<ReportsOverview | null>(null);
   const [fraudCases, setFraudCases] = useState<FraudCaseRow[]>([]);
   const [selectedFraudCaseId, setSelectedFraudCaseId] = useState('');
   const [fraudCaseDetail, setFraudCaseDetail] = useState<FraudCaseDetail | null>(null);
@@ -141,13 +166,16 @@ export default function App() {
     if (view === 'promoters') {
       void loadPromoterState(token);
     }
+    if (view === 'reports') {
+      void loadReports(token, selectedTenantId, reportDays);
+    }
     if (view === 'fraud') {
       void loadFraudState(token);
     }
     if (view === 'settlements') {
       void loadSettlementState(token);
     }
-  }, [view, token, selectedTenantId, fraudStatusFilter, fraudSeverityFilter]);
+  }, [view, token, selectedTenantId, reportDays, fraudStatusFilter, fraudSeverityFilter]);
 
   const selectedTenant = useMemo(
     () => tenants.find((tenant) => tenant.id === selectedTenantId) ?? tenants[0] ?? null,
@@ -261,6 +289,7 @@ export default function App() {
     setUserDetail(null);
     setLedger([]);
     setReferralTree([]);
+    setReports(null);
     setSelectedTenantId('');
     setSelectedUserId('');
     setIsAuthenticated(false);
@@ -359,6 +388,19 @@ export default function App() {
       setPromoterState(await fetchPromoterApplications(nextToken));
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Failed to load promoter applications.');
+    }
+  }
+
+  async function loadReports(nextToken: string, tenantId: string, days: number) {
+    if (!tenantId) {
+      setReports(null);
+      return;
+    }
+    try {
+      setReports(await fetchReports(nextToken, tenantId, days));
+      setStatus(`Loaded reports for the last ${days} day(s).`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Failed to load reports.');
     }
   }
 
@@ -790,6 +832,127 @@ export default function App() {
           </section>
         )}
 
+        {view === 'reports' && (
+          <section className="panel-grid panel-grid-wide">
+            <section className="panel">
+              <div className="toolbar-inline">
+                <label className="field">
+                  <span>Range (days)</span>
+                  <select
+                    value={reportDays}
+                    onChange={(event) => setReportDays(Number(event.target.value))}
+                  >
+                    <option value={30}>30</option>
+                    <option value={60}>60</option>
+                    <option value={90}>90</option>
+                  </select>
+                </label>
+                <button
+                  className="secondary"
+                  onClick={() =>
+                    token &&
+                    selectedTenantId &&
+                    void loadReports(token, selectedTenantId, reportDays)
+                  }
+                  disabled={!token || !selectedTenantId || loading}
+                >
+                  Reload reports
+                </button>
+              </div>
+              {reports ? (
+                <>
+                  <div className="detail-list">
+                    <div>
+                      <dt>Tenant</dt>
+                      <dd>{reports.tenant_id}</dd>
+                    </div>
+                    <div>
+                      <dt>Range</dt>
+                      <dd>{reports.range_days} days</dd>
+                    </div>
+                    <div>
+                      <dt>Total conversion events</dt>
+                      <dd>
+                        {reports.conversion_daily.reduce((sum, row) => sum + row.event_count, 0)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Current liability</dt>
+                      <dd>
+                        {lastItem(reports.tenant_liability_daily)?.display_liability_minor ?? '0'}{' '}
+                        {lastItem(reports.tenant_liability_daily)?.currency ??
+                          selectedTenant?.baseCurrency ??
+                          'EUR'}
+                      </dd>
+                    </div>
+                  </div>
+
+                  <h3>Conversions</h3>
+                  <ChartBox>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <LineChart data={buildConversionChartData(reports)}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="day" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="invoice_paid" stroke="#2563eb" />
+                        <Line type="monotone" dataKey="purchase_completed" stroke="#16a34a" />
+                        <Line type="monotone" dataKey="user_registered" stroke="#9333ea" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </ChartBox>
+
+                  <h3>Reward performance</h3>
+                  <ChartBox>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <BarChart data={buildRewardChartData(reports)}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="day" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="rewardExpenseMinor" fill="#f59e0b" />
+                        <Bar dataKey="postedScheduledCount" fill="#0f766e" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartBox>
+
+                  <h3>Tenant liability</h3>
+                  <ChartBox>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <LineChart data={buildLiabilityChartData(reports)}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="day" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="displayLiabilityMinor" stroke="#dc2626" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </ChartBox>
+
+                  <h3>Cohort retention</h3>
+                  <ChartBox>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <BarChart data={buildRetentionChartData(reports)}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="cohort" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="retentionRatePercent" fill="#7c3aed" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartBox>
+                </>
+              ) : (
+                <p className="muted">No reporting data loaded yet.</p>
+              )}
+            </section>
+          </section>
+        )}
+
         {view === 'webhooks' && (
           <section className="panel">
             <h3>Webhook deliveries</h3>
@@ -1013,6 +1176,57 @@ function renderPlaceholderPanel(title: string, state: PlaceholderListResponse | 
       </p>
     </section>
   );
+}
+
+function ChartBox({ children }: { children: ReactNode }) {
+  return <div style={{ width: '100%', height: 260 }}>{children}</div>;
+}
+
+function buildConversionChartData(reports: ReportsOverview) {
+  const byDay = new Map<string, Record<string, number | string>>();
+  for (const row of reports.conversion_daily) {
+    if (!byDay.has(row.day)) byDay.set(row.day, { day: shortDay(row.day) });
+    byDay.get(row.day)![row.event_type] = row.event_count;
+  }
+  return [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([, value]) => value);
+}
+
+function buildRewardChartData(reports: ReportsOverview) {
+  return reports.reward_performance_daily.map((row) => ({
+    day: shortDay(row.day),
+    rewardExpenseMinor: Number(row.reward_expense_minor),
+    postedScheduledCount: row.posted_scheduled_count,
+  }));
+}
+
+function buildLiabilityChartData(reports: ReportsOverview) {
+  return reports.tenant_liability_daily.map((row) => ({
+    day: shortDay(row.day),
+    displayLiabilityMinor: Number(row.display_liability_minor),
+  }));
+}
+
+function buildRetentionChartData(reports: ReportsOverview) {
+  const latestByCohort = new Map<string, { cohort: string; retentionRatePercent: number }>();
+  for (const row of reports.cohort_retention_daily) {
+    const rate =
+      row.cohort_size > 0 ? Number(((row.retained_users / row.cohort_size) * 100).toFixed(2)) : 0;
+    latestByCohort.set(row.cohort_day, {
+      cohort: shortDay(row.cohort_day),
+      retentionRatePercent: rate,
+    });
+  }
+  return [...latestByCohort.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([, value]) => value);
+}
+
+function shortDay(value: string) {
+  return value.slice(0, 10);
+}
+
+function lastItem<T>(items: T[]): T | undefined {
+  return items.length ? items[items.length - 1] : undefined;
 }
 
 function parseConfigDraft(raw: string, label: string) {

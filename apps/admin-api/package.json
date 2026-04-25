@@ -31,6 +31,7 @@
     "@uprm/payments": "workspace:*",
     "@uprm/payouts": "workspace:*",
     "@uprm/referrals": "workspace:*",
+    "@uprm/reporting": "workspace:*",
     "@uprm/tenants": "workspace:*",
     "@uprm/webhooks": "workspace:*",
     "class-transformer": "^0.5.1",
