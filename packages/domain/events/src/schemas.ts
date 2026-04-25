@@ -93,6 +93,7 @@ export const EVENT_SCHEMAS = {
     linkedExternalEventId: z.string().min(1).max(128),
     amount: z.string().regex(/^\d+(\.\d{1,2})?$/),
     currency: z.string().length(3),
+    metadata: z.record(z.string(), z.unknown()).optional(),
   }),
 
   chargeback_won: z.object({

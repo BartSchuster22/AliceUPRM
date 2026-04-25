@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type Stripe from 'stripe';
 import { StripeWebhookService } from './stripe.service';
 
 describe('StripeWebhookService', () => {
   it('maps checkout.session.completed into a subscription_started UPRM event', () => {
-    const svc = new StripeWebhookService();
+    const svc = new StripeWebhookService({} as any, vi.fn() as any);
     const event = {
       id: 'evt_checkout_1',
       type: 'checkout.session.completed',
@@ -38,7 +38,7 @@ describe('StripeWebhookService', () => {
   });
 
   it('maps invoice.paid into an invoice_paid UPRM event', () => {
-    const svc = new StripeWebhookService();
+    const svc = new StripeWebhookService({} as any, vi.fn() as any);
     const event = {
       id: 'evt_invoice_1',
       type: 'invoice.paid',
@@ -74,7 +74,7 @@ describe('StripeWebhookService', () => {
   });
 
   it('maps customer.subscription.deleted into a subscription_cancelled UPRM event', () => {
-    const svc = new StripeWebhookService();
+    const svc = new StripeWebhookService({} as any, vi.fn() as any);
     const event = {
       id: 'evt_cancel_1',
       type: 'customer.subscription.deleted',
@@ -100,8 +100,8 @@ describe('StripeWebhookService', () => {
     });
   });
 
-  it('maps charge.refunded into a refund_issued UPRM event', () => {
-    const svc = new StripeWebhookService();
+  it('maps charge.refunded from direct metadata when present', () => {
+    const svc = new StripeWebhookService({} as any, vi.fn() as any);
     const event = {
       id: 'evt_refund_1',
       type: 'charge.refunded',
@@ -115,11 +115,7 @@ describe('StripeWebhookService', () => {
             linkedExternalEventId: 'evt_invoice_1',
           },
           refunds: {
-            data: [
-              {
-                reason: 'requested_by_customer',
-              },
-            ],
+            data: [{ reason: 'requested_by_customer' }],
           },
         },
       },
@@ -138,25 +134,89 @@ describe('StripeWebhookService', () => {
     });
   });
 
-  it('maps dispute created into a chargeback_opened UPRM event', () => {
-    const svc = new StripeWebhookService();
+  it('derives refund linkage from prior invoice_paid ingestion when metadata is absent', async () => {
+    const db = {
+      ingestedEvent: {
+        findFirst: vi.fn().mockResolvedValue({
+          externalUserId: 'psi-user-1',
+          externalEventId: 'evt_invoice_1',
+        }),
+      },
+    } as any;
+    const stripe = {
+      charges: { retrieve: vi.fn() },
+      invoices: { retrieve: vi.fn() },
+      webhooks: { constructEvent: vi.fn() },
+      checkout: { sessions: { create: vi.fn() } },
+    } as any;
+    const svc = new StripeWebhookService(db, () => stripe);
+    const event = {
+      id: 'evt_refund_derived_1',
+      type: 'charge.refunded',
+      created: 1_713_960_360,
+      data: {
+        object: {
+          id: 'ch_123',
+          invoice: 'in_123',
+          amount_refunded: 2999,
+          currency: 'eur',
+          refunds: {
+            data: [{ reason: 'requested_by_customer' }],
+          },
+        },
+      },
+    } as unknown as Stripe.Event;
+
+    await expect(svc.normalizeForTenant(event, 'tenant-1', stripe)).resolves.toEqual({
+      eventType: 'refund_issued',
+      idempotencyKey: 'stripe:evt_refund_derived_1',
+      externalEventId: 'evt_refund_derived_1',
+      externalUserId: 'psi-user-1',
+      occurredAt: '2024-04-24T12:06:00.000Z',
+      linkedExternalEventId: 'evt_invoice_1',
+      amount: '29.99',
+      currency: 'EUR',
+      reason: 'requested_by_customer',
+      metadata: {
+        chargeId: 'ch_123',
+        invoiceId: 'in_123',
+      },
+    });
+  });
+
+  it('derives chargeback_opened linkage from dispute charge -> invoice -> prior invoice_paid ingestion', async () => {
+    const db = {
+      ingestedEvent: {
+        findFirst: vi.fn().mockResolvedValue({
+          externalUserId: 'psi-user-1',
+          externalEventId: 'evt_invoice_1',
+        }),
+      },
+    } as any;
+    const stripe = {
+      charges: {
+        retrieve: vi.fn().mockResolvedValue({ id: 'ch_123', invoice: 'in_123' }),
+      },
+      invoices: { retrieve: vi.fn() },
+      webhooks: { constructEvent: vi.fn() },
+      checkout: { sessions: { create: vi.fn() } },
+    } as any;
+    const svc = new StripeWebhookService(db, () => stripe);
     const event = {
       id: 'evt_dispute_open_1',
       type: 'charge.dispute.created',
       created: 1_713_960_480,
       data: {
         object: {
+          id: 'dp_123',
+          charge: 'ch_123',
           amount: 2999,
           currency: 'eur',
-          metadata: {
-            externalUserId: 'psi-user-1',
-            linkedExternalEventId: 'evt_invoice_1',
-          },
         },
       },
     } as unknown as Stripe.Event;
 
-    expect(svc.normalize(event)).toEqual({
+    await expect(svc.normalizeForTenant(event, 'tenant-1', stripe)).resolves.toEqual({
       eventType: 'chargeback_opened',
       idempotencyKey: 'stripe:evt_dispute_open_1',
       externalEventId: 'evt_dispute_open_1',
@@ -165,27 +225,43 @@ describe('StripeWebhookService', () => {
       linkedExternalEventId: 'evt_invoice_1',
       amount: '29.99',
       currency: 'EUR',
+      metadata: {
+        disputeId: 'dp_123',
+        chargeId: 'ch_123',
+        invoiceId: 'in_123',
+      },
     });
   });
 
-  it('maps dispute closed with won status into a chargeback_won UPRM event', () => {
-    const svc = new StripeWebhookService();
+  it('derives chargeback resolution linkage from prior chargeback_opened ingestion', async () => {
+    const db = {
+      ingestedEvent: {
+        findFirst: vi.fn().mockResolvedValue({
+          externalUserId: 'psi-user-1',
+          externalEventId: 'evt_dispute_open_1',
+        }),
+      },
+    } as any;
+    const stripe = {
+      charges: { retrieve: vi.fn() },
+      invoices: { retrieve: vi.fn() },
+      webhooks: { constructEvent: vi.fn() },
+      checkout: { sessions: { create: vi.fn() } },
+    } as any;
+    const svc = new StripeWebhookService(db, () => stripe);
     const event = {
       id: 'evt_dispute_close_won_1',
       type: 'charge.dispute.closed',
       created: 1_713_960_600,
       data: {
         object: {
+          id: 'dp_123',
           status: 'won',
-          metadata: {
-            externalUserId: 'psi-user-1',
-            linkedExternalEventId: 'evt_dispute_open_1',
-          },
         },
       },
     } as unknown as Stripe.Event;
 
-    expect(svc.normalize(event)).toEqual({
+    await expect(svc.normalizeForTenant(event, 'tenant-1', stripe)).resolves.toEqual({
       eventType: 'chargeback_won',
       idempotencyKey: 'stripe:evt_dispute_close_won_1',
       externalEventId: 'evt_dispute_close_won_1',
@@ -195,8 +271,8 @@ describe('StripeWebhookService', () => {
     });
   });
 
-  it('maps dispute closed with lost status into a chargeback_lost UPRM event', () => {
-    const svc = new StripeWebhookService();
+  it('maps dispute closed with lost status from metadata when present', () => {
+    const svc = new StripeWebhookService({} as any, vi.fn() as any);
     const event = {
       id: 'evt_dispute_close_lost_1',
       type: 'charge.dispute.closed',
@@ -223,7 +299,7 @@ describe('StripeWebhookService', () => {
   });
 
   it('skips unsupported Stripe events cleanly', () => {
-    const svc = new StripeWebhookService();
+    const svc = new StripeWebhookService({} as any, vi.fn() as any);
     const event = {
       id: 'evt_unknown_1',
       type: 'invoice.payment_failed',

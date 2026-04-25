@@ -46,6 +46,7 @@ export class StripeWebhooksController {
         rawBody,
         signature,
         webhookSecret: stripeConfig.webhookSecret,
+        tenantId,
       });
     } catch (error: any) {
       if (error?.type === 'StripeSignatureVerificationError') {

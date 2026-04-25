@@ -1,5 +1,6 @@
 import type Stripe from 'stripe';
 import StripeClient from 'stripe';
+import { prisma, type PrismaClient } from '@uprm/db';
 import type { EventPayload } from '@uprm/events';
 
 export interface CreateCheckoutSessionInput {
@@ -13,6 +14,57 @@ export interface CreateCheckoutSessionInput {
   successUrl: string;
   cancelUrl: string;
   referralCodeUsed?: string;
+}
+
+interface StripeChargeLike {
+  id?: string;
+  invoice?: string | { id?: string | null } | null;
+  metadata?: Record<string, string>;
+}
+
+interface StripeInvoiceLike {
+  id?: string;
+  parent?: {
+    subscription_details?: {
+      metadata?: Record<string, string>;
+    };
+  };
+}
+
+interface StripeClientLike {
+  webhooks: {
+    constructEvent(rawBody: Buffer, signature: string, webhookSecret: string): Stripe.Event;
+  };
+  checkout: {
+    sessions: {
+      create(input: Stripe.Checkout.SessionCreateParams): Promise<Stripe.Checkout.Session>;
+    };
+  };
+  charges: {
+    retrieve(chargeId: string): Promise<StripeChargeLike>;
+  };
+  invoices: {
+    retrieve(invoiceId: string): Promise<StripeInvoiceLike>;
+  };
+}
+
+interface RefundOrChargebackContext {
+  externalUserId: string;
+  linkedExternalEventId: string;
+  invoiceId?: string;
+  chargeId?: string;
+}
+
+function getStripeApiKey(): string {
+  const apiKey = process.env.STRIPE_SECRET_KEY;
+  if (!apiKey) {
+    throw new Error('STRIPE_SECRET_KEY is required');
+  }
+  return apiKey;
+}
+
+function createStripeClient(): StripeClientLike {
+  return new StripeClient(getStripeApiKey()) as unknown as StripeClientLike;
 }
 
 export function buildStripeCheckoutSessionParams(
@@ -50,15 +102,12 @@ export function buildStripeCheckoutSessionParams(
 }
 
 export class StripeCheckoutService {
+  constructor(private readonly stripeFactory: () => StripeClientLike = createStripeClient) {}
+
   async createCheckoutSession(
     input: CreateCheckoutSessionInput,
   ): Promise<{ sessionId: string; url: string }> {
-    const apiKey = process.env.STRIPE_SECRET_KEY;
-    if (!apiKey) {
-      throw new Error('STRIPE_SECRET_KEY is required');
-    }
-
-    const stripe = new StripeClient(apiKey);
+    const stripe = this.stripeFactory();
     const session = await stripe.checkout.sessions.create(buildStripeCheckoutSessionParams(input));
 
     if (!session.url) {
@@ -73,19 +122,25 @@ export class StripeCheckoutService {
 }
 
 export class StripeWebhookService {
+  constructor(
+    private readonly db: PrismaClient = prisma,
+    private readonly stripeFactory: () => StripeClientLike = createStripeClient,
+  ) {}
+
   async constructAndNormalize(input: {
     rawBody: Buffer;
     signature: string;
     webhookSecret: string;
+    tenantId: string;
   }): Promise<EventPayload | null> {
-    const stripe = new StripeClient(process.env.STRIPE_SECRET_KEY ?? 'sk_test_placeholder');
+    const stripe = this.stripeFactory();
     const event = stripe.webhooks.constructEvent(
       input.rawBody,
       input.signature,
       input.webhookSecret,
     );
 
-    return this.normalize(event);
+    return this.normalizeForTenant(event, input.tenantId, stripe);
   }
 
   normalize(event: Stripe.Event): EventPayload | null {
@@ -97,13 +152,30 @@ export class StripeWebhookService {
       case 'customer.subscription.deleted':
         return this.normalizeSubscriptionDeleted(event);
       case 'charge.refunded':
-        return this.normalizeChargeRefunded(event);
+        return this.normalizeChargeRefundedFromMetadata(event);
       case 'charge.dispute.created':
-        return this.normalizeDisputeCreated(event);
+        return this.normalizeDisputeCreatedFromMetadata(event);
       case 'charge.dispute.closed':
-        return this.normalizeDisputeClosed(event);
+        return this.normalizeDisputeClosedFromMetadata(event);
       default:
         return null;
+    }
+  }
+
+  async normalizeForTenant(
+    event: Stripe.Event,
+    tenantId: string,
+    stripe: StripeClientLike = this.stripeFactory(),
+  ): Promise<EventPayload | null> {
+    switch (event.type) {
+      case 'charge.refunded':
+        return this.normalizeChargeRefundedResolved(event, tenantId, stripe);
+      case 'charge.dispute.created':
+        return this.normalizeDisputeCreatedResolved(event, tenantId, stripe);
+      case 'charge.dispute.closed':
+        return this.normalizeDisputeClosedResolved(event, tenantId, stripe);
+      default:
+        return this.normalize(event);
     }
   }
 
@@ -181,7 +253,7 @@ export class StripeWebhookService {
     };
   }
 
-  private normalizeChargeRefunded(event: Stripe.Event): EventPayload | null {
+  private normalizeChargeRefundedFromMetadata(event: Stripe.Event): EventPayload | null {
     const charge = event.data.object as Stripe.Charge;
     const externalUserId = charge.metadata?.externalUserId;
     const linkedExternalEventId = charge.metadata?.linkedExternalEventId;
@@ -206,7 +278,7 @@ export class StripeWebhookService {
     };
   }
 
-  private normalizeDisputeCreated(event: Stripe.Event): EventPayload | null {
+  private normalizeDisputeCreatedFromMetadata(event: Stripe.Event): EventPayload | null {
     const dispute = event.data.object as Stripe.Dispute;
     const externalUserId = dispute.metadata?.externalUserId;
     const linkedExternalEventId = dispute.metadata?.linkedExternalEventId;
@@ -226,10 +298,13 @@ export class StripeWebhookService {
       linkedExternalEventId,
       amount: formatMinorUnits(amount),
       currency: currency.toUpperCase(),
+      metadata: {
+        disputeId: dispute.id,
+      },
     };
   }
 
-  private normalizeDisputeClosed(event: Stripe.Event): EventPayload | null {
+  private normalizeDisputeClosedFromMetadata(event: Stripe.Event): EventPayload | null {
     const dispute = event.data.object as Stripe.Dispute;
     const externalUserId = dispute.metadata?.externalUserId;
     const linkedExternalEventId = dispute.metadata?.linkedExternalEventId;
@@ -238,30 +313,227 @@ export class StripeWebhookService {
       return null;
     }
 
-    if (dispute.status === 'won') {
-      return {
-        eventType: 'chargeback_won',
-        idempotencyKey: `stripe:${event.id}`,
-        externalEventId: event.id,
-        externalUserId,
-        occurredAt: new Date(event.created * 1000).toISOString(),
-        linkedExternalEventId,
-      };
-    }
-
-    if (dispute.status === 'lost') {
-      return {
-        eventType: 'chargeback_lost',
-        idempotencyKey: `stripe:${event.id}`,
-        externalEventId: event.id,
-        externalUserId,
-        occurredAt: new Date(event.created * 1000).toISOString(),
-        linkedExternalEventId,
-      };
-    }
-
-    return null;
+    return buildDisputeClosedPayload(event, dispute.status, externalUserId, linkedExternalEventId);
   }
+
+  private async normalizeChargeRefundedResolved(
+    event: Stripe.Event,
+    tenantId: string,
+    stripe: StripeClientLike,
+  ): Promise<EventPayload | null> {
+    const charge = event.data.object as Stripe.Charge;
+    const reason = charge.refunds?.data?.[0]?.reason ?? undefined;
+    const context = await this.resolveRefundOrChargebackContext(
+      tenantId,
+      charge as StripeChargeLike,
+      stripe,
+    );
+    if (!context || charge.amount_refunded == null || !charge.currency) {
+      return this.normalizeChargeRefundedFromMetadata(event);
+    }
+
+    return {
+      eventType: 'refund_issued',
+      idempotencyKey: `stripe:${event.id}`,
+      externalEventId: event.id,
+      externalUserId: context.externalUserId,
+      occurredAt: new Date(event.created * 1000).toISOString(),
+      linkedExternalEventId: context.linkedExternalEventId,
+      amount: formatMinorUnits(charge.amount_refunded),
+      currency: charge.currency.toUpperCase(),
+      ...(reason ? { reason } : {}),
+      metadata: {
+        ...(context.chargeId ? { chargeId: context.chargeId } : {}),
+        ...(context.invoiceId ? { invoiceId: context.invoiceId } : {}),
+      },
+    };
+  }
+
+  private async normalizeDisputeCreatedResolved(
+    event: Stripe.Event,
+    tenantId: string,
+    stripe: StripeClientLike,
+  ): Promise<EventPayload | null> {
+    const dispute = event.data.object as Stripe.Dispute & {
+      charge?: string | StripeChargeLike | null;
+    };
+    const charge = await this.resolveChargeFromDispute(dispute, stripe);
+    const context = charge
+      ? await this.resolveRefundOrChargebackContext(tenantId, charge, stripe)
+      : null;
+
+    if (!context || dispute.amount == null || !dispute.currency) {
+      return this.normalizeDisputeCreatedFromMetadata(event);
+    }
+
+    return {
+      eventType: 'chargeback_opened',
+      idempotencyKey: `stripe:${event.id}`,
+      externalEventId: event.id,
+      externalUserId: context.externalUserId,
+      occurredAt: new Date(event.created * 1000).toISOString(),
+      linkedExternalEventId: context.linkedExternalEventId,
+      amount: formatMinorUnits(dispute.amount),
+      currency: dispute.currency.toUpperCase(),
+      metadata: {
+        disputeId: dispute.id,
+        ...(context.chargeId ? { chargeId: context.chargeId } : {}),
+        ...(context.invoiceId ? { invoiceId: context.invoiceId } : {}),
+      },
+    };
+  }
+
+  private async normalizeDisputeClosedResolved(
+    event: Stripe.Event,
+    tenantId: string,
+    _stripe: StripeClientLike,
+  ): Promise<EventPayload | null> {
+    const dispute = event.data.object as Stripe.Dispute;
+    const context = await this.resolveDisputeResolutionContext(tenantId, dispute.id);
+    if (!context) {
+      return this.normalizeDisputeClosedFromMetadata(event);
+    }
+
+    return buildDisputeClosedPayload(
+      event,
+      dispute.status,
+      context.externalUserId,
+      context.linkedExternalEventId,
+    );
+  }
+
+  private async resolveRefundOrChargebackContext(
+    tenantId: string,
+    charge: StripeChargeLike,
+    stripe: StripeClientLike,
+  ): Promise<RefundOrChargebackContext | null> {
+    const chargeId = charge.id;
+    const metadataExternalUserId = charge.metadata?.externalUserId;
+    const metadataLinkedExternalEventId = charge.metadata?.linkedExternalEventId;
+
+    let invoiceId = toId(charge.invoice);
+    if (!invoiceId && chargeId) {
+      const fetchedCharge = await stripe.charges.retrieve(chargeId);
+      invoiceId = toId(fetchedCharge.invoice);
+    }
+
+    let linkedEvent = null;
+    if (invoiceId) {
+      linkedEvent = await this.db.ingestedEvent.findFirst({
+        where: {
+          tenantId,
+          eventType: 'invoice_paid',
+          payload: {
+            path: ['invoiceId'],
+            equals: invoiceId,
+          },
+        },
+        orderBy: { receivedAt: 'desc' },
+      });
+    }
+
+    let externalUserId = metadataExternalUserId ?? linkedEvent?.externalUserId ?? null;
+    const linkedExternalEventId =
+      metadataLinkedExternalEventId ?? linkedEvent?.externalEventId ?? null;
+
+    if (!externalUserId && invoiceId) {
+      const invoice = await stripe.invoices.retrieve(invoiceId);
+      externalUserId = invoice.parent?.subscription_details?.metadata?.externalUserId ?? null;
+    }
+
+    if (!externalUserId || !linkedExternalEventId) {
+      return null;
+    }
+
+    return {
+      externalUserId,
+      linkedExternalEventId,
+      ...(invoiceId ? { invoiceId } : {}),
+      ...(chargeId ? { chargeId } : {}),
+    };
+  }
+
+  private async resolveDisputeResolutionContext(
+    tenantId: string,
+    disputeId?: string | null,
+  ): Promise<RefundOrChargebackContext | null> {
+    if (!disputeId) {
+      return null;
+    }
+
+    const openedEvent = await this.db.ingestedEvent.findFirst({
+      where: {
+        tenantId,
+        eventType: 'chargeback_opened',
+        payload: {
+          path: ['metadata', 'disputeId'],
+          equals: disputeId,
+        },
+      },
+      orderBy: { receivedAt: 'desc' },
+    });
+
+    if (!openedEvent?.externalUserId || !openedEvent.externalEventId) {
+      return null;
+    }
+
+    return {
+      externalUserId: openedEvent.externalUserId,
+      linkedExternalEventId: openedEvent.externalEventId,
+    };
+  }
+
+  private async resolveChargeFromDispute(
+    dispute: Stripe.Dispute & { charge?: string | StripeChargeLike | null },
+    stripe: StripeClientLike,
+  ): Promise<StripeChargeLike | null> {
+    if (!dispute.charge) {
+      return null;
+    }
+
+    if (typeof dispute.charge === 'string') {
+      return stripe.charges.retrieve(dispute.charge);
+    }
+
+    return dispute.charge;
+  }
+}
+
+function buildDisputeClosedPayload(
+  event: Stripe.Event,
+  status: string | undefined,
+  externalUserId: string,
+  linkedExternalEventId: string,
+): EventPayload | null {
+  if (status === 'won') {
+    return {
+      eventType: 'chargeback_won',
+      idempotencyKey: `stripe:${event.id}`,
+      externalEventId: event.id,
+      externalUserId,
+      occurredAt: new Date(event.created * 1000).toISOString(),
+      linkedExternalEventId,
+    };
+  }
+
+  if (status === 'lost') {
+    return {
+      eventType: 'chargeback_lost',
+      idempotencyKey: `stripe:${event.id}`,
+      externalEventId: event.id,
+      externalUserId,
+      occurredAt: new Date(event.created * 1000).toISOString(),
+      linkedExternalEventId,
+    };
+  }
+
+  return null;
+}
+
+function toId(value: string | { id?: string | null } | null | undefined): string | null {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  return value.id ?? null;
 }
 
 function formatMinorUnits(amountMinor: number): string {

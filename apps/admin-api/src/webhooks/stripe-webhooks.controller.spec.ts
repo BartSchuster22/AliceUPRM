@@ -96,6 +96,7 @@ describe('StripeWebhooksController', () => {
       rawBody: Buffer.from('{}'),
       signature: 'sig_test',
       webhookSecret: 'whsec_test',
+      tenantId: 'tenant-1',
     });
     expect((controller as any).events.ingest).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
