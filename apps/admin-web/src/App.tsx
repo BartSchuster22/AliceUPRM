@@ -31,8 +31,9 @@ import {
   type FraudCaseDetail,
   type FraudCaseRow,
   type LedgerRow,
-  type PlaceholderListResponse,
+  type PromoterApplicationRow,
   type ReportsOverview,
+  type SettlementCycleRow,
   type TenantRecord,
   type TenantUserDetail,
   type TenantUserSummary,
@@ -102,7 +103,7 @@ export default function App() {
     note: '',
   });
 
-  const [promoterState, setPromoterState] = useState<PlaceholderListResponse | null>(null);
+  const [promoterApplications, setPromoterApplications] = useState<PromoterApplicationRow[]>([]);
   const [reportDays, setReportDays] = useState(30);
   const [reports, setReports] = useState<ReportsOverview | null>(null);
   const [fraudCases, setFraudCases] = useState<FraudCaseRow[]>([]);
@@ -111,7 +112,7 @@ export default function App() {
   const [fraudResolutionNote, setFraudResolutionNote] = useState('');
   const [fraudStatusFilter, setFraudStatusFilter] = useState('');
   const [fraudSeverityFilter, setFraudSeverityFilter] = useState('');
-  const [settlementState, setSettlementState] = useState<PlaceholderListResponse | null>(null);
+  const [settlementCycles, setSettlementCycles] = useState<SettlementCycleRow[]>([]);
   const [webhookDeliveries, setWebhookDeliveries] = useState<WebhookDeliveryRow[]>([]);
 
   useEffect(() => {
@@ -385,7 +386,13 @@ export default function App() {
 
   async function loadPromoterState(nextToken: string) {
     try {
-      setPromoterState(await fetchPromoterApplications(nextToken));
+      const rows = await fetchPromoterApplications(nextToken);
+      setPromoterApplications(rows);
+      setStatus(
+        rows.length
+          ? `Loaded ${rows.length} promoter application(s).`
+          : 'No promoter applications found.',
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Failed to load promoter applications.');
     }
@@ -464,7 +471,11 @@ export default function App() {
 
   async function loadSettlementState(nextToken: string) {
     try {
-      setSettlementState(await fetchSettlementCycles(nextToken));
+      const rows = await fetchSettlementCycles(nextToken);
+      setSettlementCycles(rows);
+      setStatus(
+        rows.length ? `Loaded ${rows.length} settlement cycle(s).` : 'No settlement cycles found.',
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Failed to load settlement cycles.');
     }
@@ -740,8 +751,8 @@ export default function App() {
                   )}
                   <h4>Promoter history</h4>
                   <p className="muted">
-                    Promoter history is not available yet because promoter profile/history tables do
-                    not exist in the current UPRM domain.
+                    Promoter status now exists in UPRM; user-level history panel polish is still
+                    pending.
                   </p>
                 </>
               ) : (
@@ -1001,7 +1012,41 @@ export default function App() {
           </section>
         )}
 
-        {view === 'promoters' && renderPlaceholderPanel('Promoter applications', promoterState)}
+        {view === 'promoters' && (
+          <section className="panel">
+            <h3>Promoter applications</h3>
+            {promoterApplications.length ? (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Submitted</th>
+                      <th>Tenant user</th>
+                      <th>Status</th>
+                      <th>Links</th>
+                      <th>Reviewed</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {promoterApplications.map((row) => (
+                      <tr key={row.id}>
+                        <td>{row.submitted_at ? formatDate(row.submitted_at) : '—'}</td>
+                        <td>{row.tenant_user_id}</td>
+                        <td>{row.status}</td>
+                        <td>{row.links.length}</td>
+                        <td>{row.reviewed_at ? formatDate(row.reviewed_at) : '—'}</td>
+                        <td>{row.notes || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="muted">No promoter applications recorded yet.</p>
+            )}
+          </section>
+        )}
         {view === 'fraud' && (
           <section className="panel-grid panel-grid-wide">
             <section className="panel">
@@ -1159,22 +1204,45 @@ export default function App() {
             </section>
           </section>
         )}
-        {view === 'settlements' && renderPlaceholderPanel('Settlement cycles', settlementState)}
+        {view === 'settlements' && (
+          <section className="panel">
+            <h3>Settlement cycles</h3>
+            {settlementCycles.length ? (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Opened</th>
+                      <th>Status</th>
+                      <th>Currency</th>
+                      <th>Ledger liability</th>
+                      <th>Pending liability</th>
+                      <th>Total liability</th>
+                      <th>Closed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {settlementCycles.map((row) => (
+                      <tr key={row.id}>
+                        <td>{row.opened_at ? formatDate(row.opened_at) : '—'}</td>
+                        <td>{row.status}</td>
+                        <td>{row.currency}</td>
+                        <td>{row.ledger_liability_minor ?? '—'}</td>
+                        <td>{row.pending_liability_minor ?? '—'}</td>
+                        <td>{row.total_liability_minor ?? '—'}</td>
+                        <td>{row.closed_at ? formatDate(row.closed_at) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="muted">No settlement cycles recorded yet.</p>
+            )}
+          </section>
+        )}
       </main>
     </div>
-  );
-}
-
-function renderPlaceholderPanel(title: string, state: PlaceholderListResponse | null) {
-  return (
-    <section className="panel">
-      <h3>{title}</h3>
-      <p className="muted">{state?.message || 'Loading…'}</p>
-      <p className="muted">
-        This screen is wired and reachable, but the underlying domain is not implemented in the
-        current UPRM backend yet.
-      </p>
-    </section>
   );
 }
 

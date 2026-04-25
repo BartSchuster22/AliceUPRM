@@ -65,10 +65,39 @@ export interface LedgerRow {
   source_event_id: string | null;
 }
 
-export interface PlaceholderListResponse {
-  items: unknown[];
+export interface PromoterApplicationRow {
+  id: string;
+  tenant_id: string;
+  tenant_user_id: string;
   status: string;
-  message: string;
+  notes: string | null;
+  submitted_at: string | null;
+  reviewed_by_admin_id: string | null;
+  reviewed_at: string | null;
+  links: Array<{
+    id: string;
+    link_type: string;
+    url: string;
+    verification_status: string;
+    proof_json: Record<string, unknown> | null;
+  }>;
+}
+
+export interface SettlementCycleRow {
+  id: string;
+  tenant_id: string;
+  currency: string;
+  status: string;
+  period_start: string;
+  period_end: string;
+  ledger_liability_minor: string | null;
+  pending_liability_minor: string | null;
+  total_liability_minor: string | null;
+  note: string | null;
+  opened_by_admin_id: string | null;
+  opened_at: string | null;
+  closed_by_admin_id: string | null;
+  closed_at: string | null;
 }
 
 export interface FraudCaseRow {
@@ -269,7 +298,7 @@ export async function createManualAdjustment(
   });
 }
 
-export async function fetchPromoterApplications(token: string): Promise<PlaceholderListResponse> {
+export async function fetchPromoterApplications(token: string): Promise<PromoterApplicationRow[]> {
   return request('/admin/promoter-applications', { headers: authHeaders(token) });
 }
 
@@ -302,7 +331,7 @@ export async function resolveFraudCase(
   });
 }
 
-export async function fetchSettlementCycles(token: string): Promise<PlaceholderListResponse> {
+export async function fetchSettlementCycles(token: string): Promise<SettlementCycleRow[]> {
   return request('/admin/settlement-cycles', { headers: authHeaders(token) });
 }
 
