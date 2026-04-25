@@ -19,6 +19,18 @@ export interface VerifiedTenant {
   apiKeyId: string;
 }
 
+export interface CheckoutProductConfig {
+  ref: string;
+  name: string;
+  plan: string;
+  productDescription?: string;
+  priceDescription?: string;
+  amountMinor: number;
+  currency: string;
+  billingInterval: 'month' | 'year';
+  active: boolean;
+}
+
 export class TenantAuthError extends Error {
   constructor(
     message: string,
@@ -73,6 +85,68 @@ export class TenantService {
       where: { tenantId },
       data: input as any,
     });
+  }
+
+  async registerCheckoutProduct(
+    tenantId: string,
+    input: Omit<CheckoutProductConfig, 'plan' | 'active'> & {
+      plan?: string;
+      active?: boolean;
+    },
+  ): Promise<CheckoutProductConfig> {
+    const tenant = await this.getTenant(tenantId);
+    if (!tenant) {
+      throw new Error('tenant not found');
+    }
+
+    const previousWebhookConfig = asRecord(tenant.config?.webhookConfig);
+    const checkoutCatalog = asRecord(previousWebhookConfig.checkoutCatalog);
+    const existingProducts = parseCheckoutProducts(checkoutCatalog.products);
+
+    const nextProduct: CheckoutProductConfig = {
+      ref: input.ref,
+      name: input.name,
+      plan: input.plan ?? input.ref,
+      ...(input.productDescription ? { productDescription: input.productDescription } : {}),
+      ...(input.priceDescription ? { priceDescription: input.priceDescription } : {}),
+      amountMinor: input.amountMinor,
+      currency: input.currency.toUpperCase(),
+      billingInterval: input.billingInterval,
+      active: input.active ?? true,
+    };
+
+    const nextProducts = [
+      ...existingProducts.filter((product) => product.ref !== input.ref),
+      nextProduct,
+    ].sort((a, b) => a.ref.localeCompare(b.ref));
+
+    await this.updateConfig(tenantId, {
+      webhookConfig: {
+        ...previousWebhookConfig,
+        checkoutCatalog: {
+          ...checkoutCatalog,
+          products: nextProducts,
+        },
+      },
+    });
+
+    return nextProduct;
+  }
+
+  async getCheckoutProduct(
+    tenantId: string,
+    productRef: string,
+  ): Promise<CheckoutProductConfig | null> {
+    const tenant = await this.getTenant(tenantId);
+    if (!tenant) {
+      return null;
+    }
+
+    const previousWebhookConfig = asRecord(tenant.config?.webhookConfig);
+    const checkoutCatalog = asRecord(previousWebhookConfig.checkoutCatalog);
+    const products = parseCheckoutProducts(checkoutCatalog.products);
+    const match = products.find((product) => product.ref === productRef && product.active);
+    return match ?? null;
   }
 
   async issueApiKey(tenantId: string, scopes: string[] = []): Promise<IssuedApiKey> {
@@ -155,4 +229,53 @@ export class TenantService {
     const sig = createHmac('sha256', keyHash).update(canonical).digest('hex');
     return { header: `UPRM-HMAC ${keyPrefix}:${tsSec}:${sig}`, tsSec };
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? { ...(value as Record<string, unknown>) }
+    : {};
+}
+
+function parseCheckoutProducts(value: unknown): CheckoutProductConfig[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((entry) => {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      return [];
+    }
+
+    const row = entry as Record<string, unknown>;
+    if (
+      typeof row.ref !== 'string' ||
+      typeof row.name !== 'string' ||
+      typeof row.plan !== 'string' ||
+      typeof row.amountMinor !== 'number' ||
+      typeof row.currency !== 'string' ||
+      (row.billingInterval !== 'month' && row.billingInterval !== 'year') ||
+      typeof row.active !== 'boolean'
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        ref: row.ref,
+        name: row.name,
+        plan: row.plan,
+        ...(typeof row.productDescription === 'string'
+          ? { productDescription: row.productDescription }
+          : {}),
+        ...(typeof row.priceDescription === 'string'
+          ? { priceDescription: row.priceDescription }
+          : {}),
+        amountMinor: row.amountMinor,
+        currency: row.currency.toUpperCase(),
+        billingInterval: row.billingInterval,
+        active: row.active,
+      } satisfies CheckoutProductConfig,
+    ];
+  });
 }

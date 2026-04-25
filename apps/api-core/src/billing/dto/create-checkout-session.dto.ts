@@ -5,6 +5,7 @@ import {
   IsString,
   Length,
   Min,
+  ValidateIf,
 } from 'class-validator';
 
 export class CreateCheckoutSessionDto {
@@ -12,29 +13,39 @@ export class CreateCheckoutSessionDto {
   @Length(1, 128)
   externalUserId!: string;
 
+  @IsOptional()
   @IsString()
   @Length(1, 128)
-  plan!: string;
+  productRef?: string;
 
+  @ValidateIf((o) => !o.productRef)
+  @IsString()
+  @Length(1, 128)
+  plan?: string;
+
+  @ValidateIf((o) => !o.productRef)
   @IsString()
   @Length(1, 255)
-  productName!: string;
+  productName?: string;
 
   @IsOptional()
   @IsString()
   @Length(1, 1000)
   productDescription?: string;
 
+  @ValidateIf((o) => !o.productRef)
   @IsInt()
   @Min(1)
-  amountMinor!: number;
+  amountMinor?: number;
 
+  @ValidateIf((o) => !o.productRef)
   @IsString()
   @Length(3, 3)
-  currency!: string;
+  currency?: string;
 
+  @ValidateIf((o) => !o.productRef)
   @IsIn(['month', 'year'])
-  billingInterval!: 'month' | 'year';
+  billingInterval?: 'month' | 'year';
 
   @IsString()
   @Length(8, 2048)

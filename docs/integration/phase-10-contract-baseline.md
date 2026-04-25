@@ -84,9 +84,33 @@ Verified live behavior:
 - tenant resolved from HMAC auth context
 - tenant must exist
 - tenant Stripe config must be enabled or route returns conflict
-- requested currency must match tenant base currency or route returns bad request
+- checkout can now be created in two modes:
+  - compatibility mode: tenant sends raw pricing fields
+  - preferred mode: tenant sends `productRef` and UPRM resolves pricing from the tenant product catalog
+- requested/resolved currency must match tenant base currency or route returns bad request
 - missing `STRIPE_SECRET_KEY` is normalized to a conflict response:
   - `stripe checkout provider is not configured`
+
+Current practical meaning:
+
+- PSI can delegate checkout-session ownership to UPRM today
+- UPRM now supports the cleaner externalised direction where checkout is driven by tenant-registered product references instead of raw pricing payloads alone
+
+### Product registration route
+
+Files:
+
+- `apps/api-core/src/products/products.controller.ts`
+- `packages/domain/tenants/src/tenant.service.ts`
+
+Verified live route:
+
+- `POST /v1/products/register`
+
+Current practical meaning:
+
+- a tenant can register or update its own checkout products in UPRM
+- UPRM stores the tenant product catalog in tenant config and can later resolve `productRef` during checkout creation
 
 Current practical meaning:
 

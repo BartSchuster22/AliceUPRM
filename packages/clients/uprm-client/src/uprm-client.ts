@@ -10,6 +10,8 @@ import type {
   GetSubscriptionsByExternalUserIdResponse,
   ReferralCodeRecord,
   ReferralSummary,
+  RegisterProductInput,
+  RegisterProductResponse,
   SubmitEventInput,
   SubmitEventResponse,
   UprmClientConfig,
@@ -115,6 +117,18 @@ export class UprmClient {
     return this.http.requestJson<ReferralSummary>({
       method: 'GET',
       path: `/v1/referrals/users/${encodeURIComponent(externalUserId)}/summary`,
+      ...options,
+    });
+  }
+
+  async registerProduct(
+    input: RegisterProductInput,
+    options?: UprmRequestOptions,
+  ): Promise<RegisterProductResponse> {
+    return this.http.requestJson<RegisterProductResponse>({
+      method: 'POST',
+      path: '/v1/products/register',
+      body: input,
       ...options,
     });
   }

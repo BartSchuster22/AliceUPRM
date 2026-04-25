@@ -7,6 +7,7 @@ import { UsersModule } from './users/users.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { EventsModule } from './events/events.module';
 import { BillingModule } from './billing/billing.module';
+import { ProductsModule } from './products/products.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { BillingModule } from './billing/billing.module';
     ReferralsModule,
     EventsModule,
     BillingModule,
+    ProductsModule,
   ],
   controllers: [AppController],
   providers: [

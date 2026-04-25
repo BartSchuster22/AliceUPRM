@@ -287,18 +287,54 @@ export type ReferralSummary = {
   ledger: ReferralSummaryLedgerEntry[];
 };
 
-export type CreateCheckoutSessionInput = {
-  externalUserId: string;
-  plan: string;
-  productName: string;
+export type RegisterProductInput = {
+  ref: string;
+  name: string;
+  plan?: string;
   productDescription?: string;
+  priceDescription?: string;
   amountMinor: number;
   currency: string;
   billingInterval: 'month' | 'year';
-  successUrl: string;
-  cancelUrl: string;
-  referralCodeUsed?: string;
+  active?: boolean;
 };
+
+export type RegisteredProduct = {
+  ref: string;
+  name: string;
+  plan: string;
+  productDescription?: string;
+  priceDescription?: string;
+  amountMinor: number;
+  currency: string;
+  billingInterval: 'month' | 'year';
+  active: boolean;
+};
+
+export type RegisterProductResponse = {
+  product: RegisteredProduct;
+};
+
+export type CreateCheckoutSessionInput =
+  | {
+      externalUserId: string;
+      productRef: string;
+      successUrl: string;
+      cancelUrl: string;
+      referralCodeUsed?: string;
+    }
+  | {
+      externalUserId: string;
+      plan: string;
+      productName: string;
+      productDescription?: string;
+      amountMinor: number;
+      currency: string;
+      billingInterval: 'month' | 'year';
+      successUrl: string;
+      cancelUrl: string;
+      referralCodeUsed?: string;
+    };
 
 export type CheckoutSession = {
   sessionId: string;

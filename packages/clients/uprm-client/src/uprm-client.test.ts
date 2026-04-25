@@ -137,6 +137,22 @@ describe('@uprm/uprm-client routes', () => {
         new Response(JSON.stringify({ tenant_user: { id: 'tenant-user-1' } }), { status: 200 }),
       )
       .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            product: {
+              ref: 'cai-pro-monthly',
+              name: 'CAI Pro Monthly',
+              plan: 'cai_pro_monthly',
+              amountMinor: 4900,
+              currency: 'EUR',
+              billingInterval: 'month',
+              active: true,
+            },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
         new Response(JSON.stringify({ sessionId: 'cs_123', url: 'https://checkout.test' }), {
           status: 200,
         }),
@@ -162,13 +178,17 @@ describe('@uprm/uprm-client routes', () => {
       externalUserId: 'psi-user-1',
       username: 'Example User',
     });
-    await client.createCheckoutSession({
-      externalUserId: 'psi-user-1',
-      plan: 'pro-monthly',
-      productName: 'Pro Monthly',
-      amountMinor: 1900,
+    await client.registerProduct({
+      ref: 'cai-pro-monthly',
+      name: 'CAI Pro Monthly',
+      plan: 'cai_pro_monthly',
+      amountMinor: 4900,
       currency: 'EUR',
       billingInterval: 'month',
+    });
+    await client.createCheckoutSession({
+      externalUserId: 'psi-user-1',
+      productRef: 'cai-pro-monthly',
       successUrl: 'https://app.example.com/success',
       cancelUrl: 'https://app.example.com/cancel',
     });
@@ -182,14 +202,15 @@ describe('@uprm/uprm-client routes', () => {
       currency: 'EUR',
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe('https://uprm.test/v1/users');
-    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe('https://uprm.test/v1/products/register');
+    expect(String(fetchMock.mock.calls[2]?.[0])).toBe(
       'https://uprm.test/v1/billing/checkout-sessions',
     );
-    expect(String(fetchMock.mock.calls[2]?.[0])).toBe('https://uprm.test/v1/events');
+    expect(String(fetchMock.mock.calls[3]?.[0])).toBe('https://uprm.test/v1/events');
 
-    const eventHeaders = new Headers(fetchMock.mock.calls[2]?.[1]?.headers);
+    const eventHeaders = new Headers(fetchMock.mock.calls[3]?.[1]?.headers);
     expect(eventHeaders.get('Idempotency-Key')).toBe('evt-87654321');
   });
 });

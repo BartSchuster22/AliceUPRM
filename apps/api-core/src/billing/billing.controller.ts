@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Controller,
+  NotFoundException,
   Post,
   Body,
   Req,
@@ -37,25 +38,60 @@ export class BillingController {
       );
     }
 
-    const tenantCurrency = tenant.baseCurrency?.toUpperCase();
-    const requestedCurrency = dto.currency.toUpperCase();
-    if (tenantCurrency && tenantCurrency !== requestedCurrency) {
+    const registeredProduct = dto.productRef
+      ? await this.tenantSvc.getCheckoutProduct(tenantId, dto.productRef)
+      : null;
+
+    if (dto.productRef && !registeredProduct) {
+      throw new NotFoundException(
+        `checkout product not found for ref ${dto.productRef}`,
+      );
+    }
+
+    const resolvedPlan = registeredProduct?.plan ?? dto.plan;
+    const resolvedProductName = registeredProduct?.name ?? dto.productName;
+    const resolvedProductDescription =
+      registeredProduct?.productDescription ??
+      registeredProduct?.priceDescription ??
+      dto.productDescription;
+    const resolvedAmountMinor =
+      registeredProduct?.amountMinor ?? dto.amountMinor;
+    const resolvedCurrency = (
+      registeredProduct?.currency ?? dto.currency
+    )?.toUpperCase();
+    const resolvedBillingInterval =
+      registeredProduct?.billingInterval ?? dto.billingInterval;
+
+    if (
+      !resolvedPlan ||
+      !resolvedProductName ||
+      resolvedAmountMinor == null ||
+      !resolvedCurrency ||
+      !resolvedBillingInterval
+    ) {
       throw new BadRequestException(
-        `tenant base currency is ${tenantCurrency}, got ${requestedCurrency}`,
+        'checkout request is missing required product pricing fields',
+      );
+    }
+
+    const tenantCurrency = tenant.baseCurrency?.toUpperCase();
+    if (tenantCurrency && tenantCurrency !== resolvedCurrency) {
+      throw new BadRequestException(
+        `tenant base currency is ${tenantCurrency}, got ${resolvedCurrency}`,
       );
     }
 
     return this.payments
       .createCheckoutSession({
         externalUserId: dto.externalUserId,
-        plan: dto.plan,
-        productName: dto.productName,
-        ...(dto.productDescription
-          ? { productDescription: dto.productDescription }
+        plan: resolvedPlan,
+        productName: resolvedProductName,
+        ...(resolvedProductDescription
+          ? { productDescription: resolvedProductDescription }
           : {}),
-        amountMinor: dto.amountMinor,
-        currency: requestedCurrency,
-        billingInterval: dto.billingInterval,
+        amountMinor: resolvedAmountMinor,
+        currency: resolvedCurrency,
+        billingInterval: resolvedBillingInterval,
         successUrl: dto.successUrl,
         cancelUrl: dto.cancelUrl,
         ...(dto.referralCodeUsed
