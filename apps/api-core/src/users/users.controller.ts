@@ -39,6 +39,34 @@ export class UsersController {
     return { tenant_user: tu };
   }
 
+  @Get('external/:externalUserId/profile')
+  async profileByExternalUserId(
+    @Param('externalUserId') externalUserId: string,
+    @Req() req: any,
+  ) {
+    const tenantId: string = req.uprm.tenantId;
+    const profile = await this.svc.getProfileByExternalUserId(
+      tenantId,
+      externalUserId,
+    );
+    if (!profile) throw new NotFoundException('tenant user not found');
+    return profile;
+  }
+
+  @Get('external/:externalUserId/subscriptions')
+  async subscriptionsByExternalUserId(
+    @Param('externalUserId') externalUserId: string,
+    @Req() req: any,
+  ) {
+    const tenantId: string = req.uprm.tenantId;
+    const subscriptions =
+      await this.svc.getSubscriptionSummariesByExternalUserId(
+        tenantId,
+        externalUserId,
+      );
+    return { subscriptions };
+  }
+
   @Get(':id')
   async get(@Param('id') id: string, @Req() req: any) {
     const tenantId: string = req.uprm.tenantId;

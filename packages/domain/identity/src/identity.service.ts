@@ -1,5 +1,31 @@
 import { prisma, PrismaClient } from '@uprm/db';
 
+export interface TenantUserProfileSummary {
+  userId: string;
+  email: string;
+  fullName: string;
+  referralCode: string | null;
+  emailVerified: boolean;
+  userStatus: string;
+  profileId: string | null;
+  accountType: 'private' | 'business' | null;
+  companyName: string | null;
+  taxId: string | null;
+  phone: string | null;
+  country: string | null;
+  onboardingState: string | null;
+}
+
+export interface TenantUserSubscriptionSummary {
+  externalSubscriptionId: string;
+  status: string;
+  plan: string;
+  amountMinor: number;
+  currency: string;
+  startedAt: string;
+  cancelledAt: string | null;
+}
+
 export class IdentityError extends Error {
   constructor(
     message: string,
@@ -79,4 +105,155 @@ export class IdentityService {
       include: { user: true },
     });
   }
+
+  async getTenantUserByExternalUserId(tenantId: string, externalUserId: string): Promise<any> {
+    return this.db.tenantUser.findUnique({
+      where: {
+        tenantId_externalUserId: {
+          tenantId,
+          externalUserId,
+        },
+      },
+      include: { user: true },
+    });
+  }
+
+  async getProfileByExternalUserId(
+    tenantId: string,
+    externalUserId: string,
+  ): Promise<TenantUserProfileSummary | null> {
+    const tenantUser = await this.db.tenantUser.findUnique({
+      where: {
+        tenantId_externalUserId: {
+          tenantId,
+          externalUserId,
+        },
+      },
+      include: { user: true },
+    });
+
+    if (!tenantUser) {
+      return null;
+    }
+
+    const referralCode = await this.db.referralCode.findFirst({
+      where: {
+        tenantId,
+        tenantUserId: tenantUser.id,
+        status: 'active',
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { code: true },
+    });
+
+    const metadata = asRecord(tenantUser.metadata);
+    const accountType = metadata?.accountType;
+
+    return {
+      userId: tenantUser.externalUserId,
+      email: tenantUser.user.emailNormalized,
+      fullName: tenantUser.username ?? tenantUser.user.emailNormalized,
+      referralCode: referralCode?.code ?? null,
+      emailVerified: tenantUser.user.emailVerified,
+      userStatus: tenantUser.tenantStatus,
+      profileId: null,
+      accountType: accountType === 'private' || accountType === 'business' ? accountType : null,
+      companyName: asNullableString(metadata?.companyName),
+      taxId: asNullableString(metadata?.taxId),
+      phone: asNullableString(metadata?.phone),
+      country: asNullableString(metadata?.country),
+      onboardingState: asNullableString(metadata?.onboardingState),
+    };
+  }
+
+  async getSubscriptionSummariesByExternalUserId(
+    tenantId: string,
+    externalUserId: string,
+  ): Promise<TenantUserSubscriptionSummary[]> {
+    const events = await this.db.ingestedEvent.findMany({
+      where: {
+        tenantId,
+        externalUserId,
+        eventType: {
+          in: ['subscription_started', 'subscription_cancelled'],
+        },
+      },
+      orderBy: { occurredAt: 'asc' },
+      select: {
+        eventType: true,
+        occurredAt: true,
+        payload: true,
+      },
+    });
+
+    const subscriptions = new Map<string, TenantUserSubscriptionSummary>();
+
+    for (const event of events) {
+      const payload = asRecord(event.payload);
+      const externalSubscriptionId = asNullableString(payload?.subscriptionId);
+      if (!externalSubscriptionId) {
+        continue;
+      }
+
+      if (event.eventType === 'subscription_started') {
+        subscriptions.set(externalSubscriptionId, {
+          externalSubscriptionId,
+          status: 'active',
+          plan: asNullableString(payload?.plan) ?? 'unknown',
+          amountMinor: parseAmountMinor(payload?.amount),
+          currency: (asNullableString(payload?.currency) ?? 'EUR').toUpperCase(),
+          startedAt: event.occurredAt.toISOString(),
+          cancelledAt: null,
+        });
+        continue;
+      }
+
+      const existing = subscriptions.get(externalSubscriptionId);
+      if (!existing) {
+        subscriptions.set(externalSubscriptionId, {
+          externalSubscriptionId,
+          status: 'cancelled',
+          plan: 'unknown',
+          amountMinor: 0,
+          currency: 'EUR',
+          startedAt: event.occurredAt.toISOString(),
+          cancelledAt: event.occurredAt.toISOString(),
+        });
+        continue;
+      }
+
+      subscriptions.set(externalSubscriptionId, {
+        ...existing,
+        status: 'cancelled',
+        cancelledAt: event.occurredAt.toISOString(),
+      });
+    }
+
+    return Array.from(subscriptions.values()).sort((a, b) =>
+      b.startedAt.localeCompare(a.startedAt),
+    );
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asNullableString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+function parseAmountMinor(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.round(value * 100);
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return Math.round(parsed * 100);
+    }
+  }
+  return 0;
 }

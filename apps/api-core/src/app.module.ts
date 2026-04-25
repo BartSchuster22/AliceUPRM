@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { EventsModule } from './events/events.module';
+import { BillingModule } from './billing/billing.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { EventsModule } from './events/events.module';
     UsersModule,
     ReferralsModule,
     EventsModule,
+    BillingModule,
   ],
   controllers: [AppController],
   providers: [

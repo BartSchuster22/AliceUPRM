@@ -11,7 +11,11 @@ import {
   UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
+import { BalanceService } from '@uprm/ledger';
+import { prisma } from '@uprm/db';
 import { ReferralService, ReferralError } from '@uprm/referrals';
+import { IdentityService } from '@uprm/identity';
+import { TenantService } from '@uprm/tenants';
 import { HmacAuthGuard } from '../auth/hmac-auth.guard';
 import { CreateCodeDto } from './dto/create-code.dto';
 import { ApplyCodeDto } from './dto/apply-code.dto';
@@ -20,6 +24,9 @@ import { ApplyCodeDto } from './dto/apply-code.dto';
 @UseGuards(HmacAuthGuard)
 export class ReferralsController {
   private readonly svc = new ReferralService();
+  private readonly identitySvc = new IdentityService();
+  private readonly tenantSvc = new TenantService();
+  private readonly balanceSvc = new BalanceService();
 
   @Post('codes')
   async createCode(@Body() dto: CreateCodeDto, @Req() req: any) {
@@ -60,5 +67,98 @@ export class ReferralsController {
       }
       throw e;
     }
+  }
+
+  @Get('users/:externalUserId/summary')
+  async summary(
+    @Param('externalUserId') externalUserId: string,
+    @Req() req: any,
+  ) {
+    const tenantId: string = req.uprm.tenantId;
+    const tenantUser = await this.identitySvc.getTenantUserByExternalUserId(
+      tenantId,
+      externalUserId,
+    );
+    if (!tenantUser) throw new NotFoundException('tenant user not found');
+
+    const tenant = await this.tenantSvc.getTenant(tenantId);
+    if (!tenant) throw new NotFoundException('tenant not found');
+
+    let code = await prisma.referralCode.findFirst({
+      where: {
+        tenantId,
+        tenantUserId: tenantUser.id,
+        status: 'active',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!code) {
+      code = await this.svc.createCode({
+        tenantId,
+        tenantUserId: tenantUser.id,
+      });
+    }
+
+    const ensuredCode = code;
+    if (!ensuredCode) {
+      throw new NotFoundException('referral code not available');
+    }
+
+    const edges = await prisma.referralEdge.findMany({
+      where: {
+        tenantId,
+        referrerTenantUserId: tenantUser.id,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const referredUsers = edges.length
+      ? await prisma.tenantUser.findMany({
+          where: {
+            id: { in: edges.map((edge) => edge.referredTenantUserId) },
+            tenantId,
+          },
+          select: {
+            id: true,
+            externalUserId: true,
+          },
+        })
+      : [];
+
+    const referredUserById = new Map(referredUsers.map((row) => [row.id, row]));
+    const activeCount = edges.filter((edge) => !edge.lockedAt).length;
+    const convertedCount = edges.filter((edge) =>
+      Boolean(edge.lockedAt),
+    ).length;
+
+    const accountBalance = await this.balanceSvc.getUserBalance(
+      tenantId,
+      tenantUser.id,
+      tenant.baseCurrency,
+    );
+    const rawBalance = accountBalance?.balance ?? 0n;
+    const totalCreditCents = Number(-rawBalance);
+
+    return {
+      tenant_user_id: tenantUser.id,
+      external_user_id: tenantUser.externalUserId,
+      referral_code: ensuredCode.code,
+      active_count: activeCount,
+      converted_count: convertedCount,
+      total_credit_cents: totalCreditCents,
+      referrals: edges.map((edge) => ({
+        id: edge.id,
+        referred_tenant_user_id: edge.referredTenantUserId,
+        referred_external_user_id:
+          referredUserById.get(edge.referredTenantUserId)?.externalUserId ??
+          null,
+        referral_code: ensuredCode.code,
+        locked: Boolean(edge.lockedAt),
+        created_at: edge.createdAt,
+        locked_at: edge.lockedAt,
+      })),
+      ledger: [],
+    };
   }
 }

@@ -1,11 +1,124 @@
 import { NotFoundException } from '@nestjs/common';
 import { UsersController } from './users.controller';
 
-describe('UsersController balance and payouts', () => {
+describe('UsersController balance, profile, subscriptions, and payouts', () => {
   let controller: UsersController;
 
   beforeEach(() => {
     controller = new UsersController();
+  });
+
+  it('returns an upstream profile by external user id', async () => {
+    (controller as any).svc = {
+      getProfileByExternalUserId: jest.fn().mockResolvedValue({
+        userId: 'psi-user-1',
+        email: 'alice@example.com',
+        fullName: 'Alice',
+        referralCode: 'ALICE123',
+        emailVerified: true,
+        userStatus: 'active',
+        profileId: null,
+        accountType: null,
+        companyName: null,
+        taxId: null,
+        phone: null,
+        country: null,
+        onboardingState: null,
+      }),
+    };
+
+    const result = await (controller as any).profileByExternalUserId(
+      'psi-user-1',
+      {
+        uprm: { tenantId: 'tenant-1' },
+      },
+    );
+
+    expect(
+      (controller as any).svc.getProfileByExternalUserId,
+    ).toHaveBeenCalledWith('tenant-1', 'psi-user-1');
+    expect(result).toEqual({
+      userId: 'psi-user-1',
+      email: 'alice@example.com',
+      fullName: 'Alice',
+      referralCode: 'ALICE123',
+      emailVerified: true,
+      userStatus: 'active',
+      profileId: null,
+      accountType: null,
+      companyName: null,
+      taxId: null,
+      phone: null,
+      country: null,
+      onboardingState: null,
+    });
+  });
+
+  it('raises not found when upstream profile is missing', async () => {
+    (controller as any).svc = {
+      getProfileByExternalUserId: jest.fn().mockResolvedValue(null),
+    };
+
+    await expect(
+      (controller as any).profileByExternalUserId('missing-user', {
+        uprm: { tenantId: 'tenant-1' },
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('returns subscription summaries by external user id', async () => {
+    (controller as any).svc = {
+      getSubscriptionSummariesByExternalUserId: jest.fn().mockResolvedValue([
+        {
+          externalSubscriptionId: 'sub_123',
+          status: 'active',
+          plan: 'product_monthly',
+          amountMinor: 4900,
+          currency: 'EUR',
+          startedAt: '2026-04-25T00:00:00.000Z',
+          cancelledAt: null,
+        },
+      ]),
+    };
+
+    const result = await (controller as any).subscriptionsByExternalUserId(
+      'psi-user-1',
+      {
+        uprm: { tenantId: 'tenant-1' },
+      },
+    );
+
+    expect(
+      (controller as any).svc.getSubscriptionSummariesByExternalUserId,
+    ).toHaveBeenCalledWith('tenant-1', 'psi-user-1');
+    expect(result).toEqual({
+      subscriptions: [
+        {
+          externalSubscriptionId: 'sub_123',
+          status: 'active',
+          plan: 'product_monthly',
+          amountMinor: 4900,
+          currency: 'EUR',
+          startedAt: '2026-04-25T00:00:00.000Z',
+          cancelledAt: null,
+        },
+      ],
+    });
+  });
+
+  it('returns an empty subscription list when no upstream subscription exists yet', async () => {
+    (controller as any).svc = {
+      getSubscriptionSummariesByExternalUserId: jest.fn().mockResolvedValue([]),
+    };
+
+    const result = await (controller as any).subscriptionsByExternalUserId(
+      'psi-user-1',
+      {
+        uprm: { tenantId: 'tenant-1' },
+      },
+    );
+
+    expect(result).toEqual({ subscriptions: [] });
   });
 
   it('returns formatted balance using the tenant base currency', async () => {

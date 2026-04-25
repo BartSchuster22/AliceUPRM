@@ -2,6 +2,76 @@ import type Stripe from 'stripe';
 import StripeClient from 'stripe';
 import type { EventPayload } from '@uprm/events';
 
+export interface CreateCheckoutSessionInput {
+  externalUserId: string;
+  plan: string;
+  productName: string;
+  productDescription?: string;
+  amountMinor: number;
+  currency: string;
+  billingInterval: 'month' | 'year';
+  successUrl: string;
+  cancelUrl: string;
+  referralCodeUsed?: string;
+}
+
+export function buildStripeCheckoutSessionParams(
+  input: CreateCheckoutSessionInput,
+): Stripe.Checkout.SessionCreateParams {
+  const metadata: Record<string, string> = {
+    externalUserId: input.externalUserId,
+    plan: input.plan,
+  };
+
+  if (input.referralCodeUsed) {
+    metadata.referralCodeUsed = input.referralCodeUsed;
+  }
+
+  return {
+    mode: 'subscription',
+    success_url: input.successUrl,
+    cancel_url: input.cancelUrl,
+    metadata,
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: input.currency.toLowerCase(),
+          unit_amount: input.amountMinor,
+          recurring: { interval: input.billingInterval },
+          product_data: {
+            name: input.productName,
+            ...(input.productDescription ? { description: input.productDescription } : {}),
+          },
+        },
+      },
+    ],
+  };
+}
+
+export class StripeCheckoutService {
+  async createCheckoutSession(
+    input: CreateCheckoutSessionInput,
+  ): Promise<{ sessionId: string; url: string }> {
+    const apiKey = process.env.STRIPE_SECRET_KEY;
+    if (!apiKey) {
+      throw new Error('STRIPE_SECRET_KEY is required');
+    }
+
+    const stripe = new StripeClient(apiKey);
+    const session = await stripe.checkout.sessions.create(buildStripeCheckoutSessionParams(input));
+
+    if (!session.url) {
+      throw new Error('Stripe checkout session did not return a URL');
+    }
+
+    return {
+      sessionId: session.id,
+      url: session.url,
+    };
+  }
+}
+
 export class StripeWebhookService {
   async constructAndNormalize(input: {
     rawBody: Buffer;
