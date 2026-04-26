@@ -35,13 +35,16 @@ export class UsersController {
   async create(@Body() dto: CreateUserDto, @Req() req: any) {
     const tenantId: string = req.uprm.tenantId;
     try {
+      const tenant = await this.tenantSvc.getTenant(tenantId);
+      const sourceTenantUserId =
+        dto.sourceTenantUserId ?? tenant?.ownerTenantUserId ?? undefined;
       const tu = await this.svc.findOrCreateTenantUser({
         tenantId,
         email: dto.email,
         externalUserId: dto.externalUserId,
         username: dto.username,
         sourceTenantId: dto.sourceTenantId,
-        sourceTenantUserId: dto.sourceTenantUserId,
+        sourceTenantUserId,
       });
       return { tenant_user: tu };
     } catch (error) {

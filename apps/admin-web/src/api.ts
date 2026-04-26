@@ -53,6 +53,34 @@ export interface TenantUserDetail {
     entity_type: string;
     email: string | null;
   } | null;
+  memberships: Array<{
+    id: string;
+    tenant_id: string;
+    user_id: string;
+    external_user_id: string;
+    username: string | null;
+    tenant_status: string;
+    entity_type: string;
+    source_tenant_id: string | null;
+    source_tenant_user_id: string | null;
+    joined_at: string;
+    metadata: Record<string, unknown>;
+    tenant: {
+      id: string;
+      name: string;
+      slug: string;
+      status: string;
+    } | null;
+  }>;
+  effective_referral_chain: Array<{
+    tenant_id: string;
+    ancestor_tenant_id: string;
+    ancestor_tenant_user_id: string;
+    descendant_tenant_user_id: string;
+    depth: number;
+    relation_type: string;
+    created_at: string;
+  }>;
   balance: {
     account_id: string;
     account_type: string;

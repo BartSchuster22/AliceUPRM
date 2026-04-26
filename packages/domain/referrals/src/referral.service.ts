@@ -150,14 +150,73 @@ export class ReferralService {
     ancestorTenantUserId: string,
     maxDepth = 2,
   ): Promise<any[]> {
-    return this.db.referralAncestry.findMany({
+    return this.getEffectiveReferralChain(tenantId, ancestorTenantUserId, maxDepth);
+  }
+
+  async getEffectiveReferralChain(
+    tenantId: string,
+    descendantTenantUserId: string,
+    maxDepth = 2,
+  ): Promise<any[]> {
+    const explicitRows = await this.db.referralAncestry.findMany({
       where: {
         tenantId,
-        ancestorTenantUserId,
+        descendantTenantUserId,
         depth: { gt: 0, lte: maxDepth },
       },
       orderBy: [{ depth: 'asc' }, { createdAt: 'asc' }],
     });
+
+    const results: any[] = [];
+    const seen = new Set<string>([descendantTenantUserId]);
+
+    for (const row of explicitRows) {
+      if (seen.has(row.ancestorTenantUserId)) continue;
+      results.push({
+        tenantId,
+        ancestorTenantId: tenantId,
+        ancestorTenantUserId: row.ancestorTenantUserId,
+        descendantTenantUserId,
+        depth: row.depth,
+        relationType: 'referral_edge',
+        createdAt: row.createdAt,
+      });
+      seen.add(row.ancestorTenantUserId);
+    }
+
+    let cursorTenantUserId = results.at(-1)?.ancestorTenantUserId ?? descendantTenantUserId;
+    let nextDepth = (results.at(-1)?.depth ?? 0) + 1;
+
+    while (cursorTenantUserId && nextDepth <= maxDepth) {
+      const cursorTenantUser = await this.db.tenantUser.findFirst({
+        where: { id: cursorTenantUserId },
+      });
+      if (!cursorTenantUser?.sourceTenantUserId) {
+        break;
+      }
+
+      const sourceTenantUser = await this.db.tenantUser.findFirst({
+        where: { id: cursorTenantUser.sourceTenantUserId },
+      });
+      if (!sourceTenantUser || seen.has(sourceTenantUser.id)) {
+        break;
+      }
+
+      results.push({
+        tenantId,
+        ancestorTenantId: sourceTenantUser.tenantId,
+        ancestorTenantUserId: sourceTenantUser.id,
+        descendantTenantUserId,
+        depth: nextDepth,
+        relationType: 'source_provenance',
+        createdAt: sourceTenantUser.joinedAt ?? new Date(0),
+      });
+      seen.add(sourceTenantUser.id);
+      cursorTenantUserId = sourceTenantUser.id;
+      nextDepth += 1;
+    }
+
+    return results;
   }
 
   // ------------------------------------------------------------

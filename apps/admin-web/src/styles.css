@@ -439,6 +439,28 @@ pre {
   grid-template-columns: 90px minmax(120px, 160px) minmax(140px, 1fr) 110px;
 }
 
+.fraud-config-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.fraud-signal-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 140px;
+  gap: 12px;
+  align-items: end;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fraud-signal-name {
+  font-size: 15px;
+  color: #dbe4ff;
+}
+
 .empty-state-inline {
   padding: 16px;
   border-radius: 16px;
@@ -467,7 +489,9 @@ pre {
   .reward-tier-row,
   .promoter-type-header,
   .promoter-tier-toolbar,
-  .promoter-tier-row {
+  .promoter-tier-row,
+  .fraud-config-grid,
+  .fraud-signal-row {
     grid-template-columns: 1fr;
   }
 }

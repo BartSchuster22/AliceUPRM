@@ -51,7 +51,12 @@ export class AdminUsersService {
     );
     const payouts = await this.payouts.listUserPayouts(tenantId, tenantUserId);
 
-    const [sourceTenant, sourceTenantUser] = await Promise.all([
+    const [
+      sourceTenant,
+      sourceTenantUser,
+      memberships,
+      effectiveReferralChain,
+    ] = await Promise.all([
       tenantUser.sourceTenantId
         ? this.db.tenant.findUnique({
             where: { id: tenantUser.sourceTenantId },
@@ -63,6 +68,15 @@ export class AdminUsersService {
             include: { user: true },
           })
         : Promise.resolve(null),
+      this.db.tenantUser.findMany({
+        where: { userId: tenantUser.userId },
+        include: {
+          tenant: true,
+          user: true,
+        },
+        orderBy: [{ joinedAt: 'asc' }],
+      }),
+      this.referrals.getEffectiveReferralChain(tenantId, tenantUserId, 3),
     ]);
 
     return {
@@ -71,6 +85,8 @@ export class AdminUsersService {
       payouts,
       sourceTenant,
       sourceTenantUser,
+      memberships,
+      effectiveReferralChain,
     };
   }
 

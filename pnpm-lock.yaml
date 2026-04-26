@@ -455,6 +455,9 @@ importers:
       '@uprm/promoter':
         specifier: workspace:*
         version: link:../../packages/domain/promoter
+      '@uprm/referrals':
+        specifier: workspace:*
+        version: link:../../packages/domain/referrals
       '@uprm/reporting':
         specifier: workspace:*
         version: link:../../packages/domain/reporting

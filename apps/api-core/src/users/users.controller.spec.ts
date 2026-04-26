@@ -153,6 +153,45 @@ describe('UsersController balance, profile, subscriptions, promoter status, and 
     });
   });
 
+  it('defaults a new user source to the current tenant owner when no explicit source user is supplied', async () => {
+    (controller as any).svc = {
+      findOrCreateTenantUser: jest.fn().mockResolvedValue({
+        id: 'tu-new',
+        tenantId: 'tenant-1',
+        externalUserId: 'alice',
+        sourceTenantId: 'tenant-1',
+        sourceTenantUserId: 'tenant-owner-1',
+      }),
+    };
+    (controller as any).tenantSvc = {
+      getTenant: jest.fn().mockResolvedValue({
+        id: 'tenant-1',
+        ownerTenantUserId: 'tenant-owner-1',
+      }),
+    };
+
+    const result = await (controller as any).create(
+      {
+        email: 'alice@example.com',
+        externalUserId: 'alice',
+        username: 'Alice',
+      },
+      { uprm: { tenantId: 'tenant-1' } },
+    );
+
+    expect((controller as any).svc.findOrCreateTenantUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        sourceTenantUserId: 'tenant-owner-1',
+      }),
+    );
+    expect(result).toEqual({
+      tenant_user: expect.objectContaining({
+        sourceTenantUserId: 'tenant-owner-1',
+      }),
+    });
+  });
+
   it('returns zero balance when the user exists but has no balance account yet', async () => {
     (controller as any).svc = {
       getTenantUser: jest.fn().mockResolvedValue({ id: 'tu-bob' }),

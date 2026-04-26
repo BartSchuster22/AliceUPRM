@@ -18,7 +18,6 @@ import {
   fetchFraudCases,
   fetchLedger,
   fetchPromoterApplications,
-  fetchReferralTree,
   fetchReports,
   fetchSettlementCycles,
   fetchTenants,
@@ -44,6 +43,7 @@ import {
 } from './api';
 import { RewardConfigEditor } from './RewardConfigEditor';
 import { PromoterConfigEditor } from './PromoterConfigEditor';
+import { FraudConfigEditor } from './FraudConfigEditor';
 
 type ViewKey =
   | 'tenants'
@@ -54,14 +54,6 @@ type ViewKey =
   | 'fraud'
   | 'settlements'
   | 'webhooks';
-
-type ReferralRow = {
-  tenantId: string;
-  ancestorTenantUserId: string;
-  descendantTenantUserId: string;
-  depth: number;
-  createdAt: string;
-};
 
 const NAV_ITEMS: Array<{ key: ViewKey; label: string }> = [
   { key: 'tenants', label: 'Tenants' },
@@ -101,7 +93,6 @@ export default function App() {
   const [selectedUserId, setSelectedUserId] = useState('');
   const [userDetail, setUserDetail] = useState<TenantUserDetail | null>(null);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
-  const [referralTree, setReferralTree] = useState<ReferralRow[]>([]);
   const [manualAdjustment, setManualAdjustment] = useState({
     amountMinor: '0',
     reasonCode: '',
@@ -308,7 +299,6 @@ export default function App() {
       } else {
         setUserDetail(null);
         setLedger([]);
-        setReferralTree([]);
       }
       setStatus(
         result.length ? `Loaded ${result.length} user(s).` : 'No users found for this tenant.',
@@ -319,7 +309,6 @@ export default function App() {
       setSelectedUserId('');
       setUserDetail(null);
       setLedger([]);
-      setReferralTree([]);
     } finally {
       setLoading(false);
     }
@@ -327,14 +316,12 @@ export default function App() {
 
   async function loadUserContext(nextToken: string, tenantId: string, tenantUserId: string) {
     if (!tenantUserId) return;
-    const [detail, ledgerRows, treeRows] = await Promise.all([
+    const [detail, ledgerRows] = await Promise.all([
       fetchUserDetail(nextToken, tenantId, tenantUserId),
       fetchLedger(nextToken, tenantId, tenantUserId),
-      fetchReferralTree(nextToken, tenantId, tenantUserId),
     ]);
     setUserDetail(detail);
     setLedger(ledgerRows);
-    setReferralTree(treeRows as ReferralRow[]);
   }
 
   async function submitLogin() {
@@ -366,7 +353,6 @@ export default function App() {
     setUsers([]);
     setUserDetail(null);
     setLedger([]);
-    setReferralTree([]);
     setReports(null);
     setSelectedTenantId('');
     setSelectedUserId('');
@@ -769,19 +755,16 @@ export default function App() {
                     }
                     disabled={loading}
                   />
-                  <label className="field">
-                    <span>Fraud config JSON</span>
-                    <textarea
-                      value={tenantConfigDrafts.fraudConfig}
-                      rows={6}
-                      onChange={(event) =>
-                        setTenantConfigDrafts((current) => ({
-                          ...current,
-                          fraudConfig: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
+                  <FraudConfigEditor
+                    value={tenantConfigDrafts.fraudConfig}
+                    onChange={(fraudConfig) =>
+                      setTenantConfigDrafts((current) => ({
+                        ...current,
+                        fraudConfig,
+                      }))
+                    }
+                    disabled={loading}
+                  />
                   <button
                     className="primary"
                     onClick={() => void saveTenantConfig()}
@@ -888,20 +871,47 @@ export default function App() {
                       </dd>
                     </div>
                   </dl>
-                  <h4>Referral tree</h4>
-                  {referralTree.length ? (
+                  <h4>Services / memberships</h4>
+                  {userDetail.memberships.length ? (
                     <ul className="data-list">
-                      {referralTree.map((row) => (
-                        <li
-                          key={`${row.ancestorTenantUserId}-${row.descendantTenantUserId}-${row.depth}`}
-                        >
-                          depth {row.depth}: {row.ancestorTenantUserId} →{' '}
-                          {row.descendantTenantUserId}
+                      {userDetail.memberships.map((membership) => (
+                        <li key={membership.id}>
+                          <strong>
+                            {membership.tenant?.name || membership.tenant_id}
+                            {membership.tenant?.slug ? ` (${membership.tenant.slug})` : ''}
+                          </strong>
+                          <br />
+                          <span className="muted">
+                            {membership.external_user_id}
+                            {' · '}
+                            {membership.entity_type}
+                            {' · '}
+                            {membership.tenant_status}
+                            {' · joined '}
+                            {formatDate(membership.joined_at)}
+                          </span>
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="muted">No referral tree rows for this user.</p>
+                    <p className="muted">No service memberships recorded for this user.</p>
+                  )}
+                  <h4>Effective referral chain</h4>
+                  {userDetail.effective_referral_chain.length ? (
+                    <ul className="data-list">
+                      {userDetail.effective_referral_chain.map((row) => (
+                        <li
+                          key={`${row.ancestor_tenant_user_id}-${row.descendant_tenant_user_id}-${row.depth}`}
+                        >
+                          depth {row.depth}: {row.ancestor_tenant_user_id}
+                          {row.ancestor_tenant_id ? ` @ ${row.ancestor_tenant_id}` : ''}
+                          {' · '}
+                          {row.relation_type}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted">No effective referral chain rows for this user.</p>
                   )}
                   <h4>Promoter history</h4>
                   <p className="muted">

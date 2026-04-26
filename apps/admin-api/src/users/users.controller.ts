@@ -161,6 +161,38 @@ function mapUserDetail(detail: any) {
       failed_at: payout.failedAt,
       cancelled_at: payout.cancelledAt,
     })),
+    memberships: (detail.memberships ?? []).map((membership: any) => ({
+      id: membership.id,
+      tenant_id: membership.tenantId,
+      user_id: membership.userId,
+      external_user_id: membership.externalUserId,
+      username: membership.username,
+      tenant_status: membership.tenantStatus,
+      entity_type: membership.entityType ?? 'person',
+      source_tenant_id: membership.sourceTenantId ?? null,
+      source_tenant_user_id: membership.sourceTenantUserId ?? null,
+      joined_at: membership.joinedAt,
+      metadata: membership.metadata,
+      tenant: membership.tenant
+        ? {
+            id: membership.tenant.id,
+            name: membership.tenant.name,
+            slug: membership.tenant.slug,
+            status: membership.tenant.status,
+          }
+        : null,
+    })),
+    effective_referral_chain: (detail.effectiveReferralChain ?? []).map(
+      (row: any) => ({
+        tenant_id: row.tenantId,
+        ancestor_tenant_id: row.ancestorTenantId,
+        ancestor_tenant_user_id: row.ancestorTenantUserId,
+        descendant_tenant_user_id: row.descendantTenantUserId,
+        depth: row.depth,
+        relation_type: row.relationType,
+        created_at: row.createdAt,
+      }),
+    ),
   };
 }
 

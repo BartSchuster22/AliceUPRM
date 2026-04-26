@@ -8,6 +8,7 @@ import {
   type TriggerEvent,
   type Ancestor,
 } from '@uprm/rewards';
+import { ReferralService } from '@uprm/referrals';
 
 const QUEUE = 'uprm.worker.rewards';
 const EXCHANGE = 'uprm.events';
@@ -19,6 +20,7 @@ export class RewardConsumer {
 
   private readonly rewards = new RewardService();
   private readonly scheduler = new ScheduledPostingService(prisma);
+  private readonly referrals = new ReferralService(prisma);
 
   public metrics = {
     consumed: 0,
@@ -124,18 +126,17 @@ export class RewardConsumer {
       return;
     }
 
-    const ancestryRows = await prisma.referralAncestry.findMany({
-      where: {
-        tenantId,
-        descendantTenantUserId: tenantUser.id,
-        depth: { gt: 0 },
-      },
-      orderBy: { depth: 'asc' },
-    });
-    const ancestors: Ancestor[] = ancestryRows.map((r) => ({
-      tenantUserId: r.ancestorTenantUserId,
-      depth: r.depth,
-    }));
+    const effectiveChain = await this.referrals.getEffectiveReferralChain(
+      tenantId,
+      tenantUser.id,
+      Math.max(config.tiers.length, 3),
+    );
+    const ancestors: Ancestor[] = effectiveChain
+      .filter((row: any) => row.ancestorTenantId === tenantId)
+      .map((row: any) => ({
+        tenantUserId: row.ancestorTenantUserId,
+        depth: row.depth,
+      }));
 
     const amountMinor = this.parseMoneyToMinor(String(amount));
     const event: TriggerEvent = {

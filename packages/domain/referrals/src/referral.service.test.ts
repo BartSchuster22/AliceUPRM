@@ -6,6 +6,7 @@ function makeFakeDb() {
     codes: new Map<string, any>(),
     edges: new Map<string, any>(),
     ancestry: new Map<string, any>(),
+    tenantUsers: new Map<string, any>(),
   };
 
   const db: any = {
@@ -93,6 +94,14 @@ function makeFakeDb() {
           count++;
         }
         return { count };
+      }),
+    },
+    tenantUser: {
+      findFirst: vi.fn(async ({ where }: any) => {
+        if (where?.id) {
+          return state.tenantUsers.get(where.id) ?? null;
+        }
+        return null;
       }),
     },
     $transaction: vi.fn(async (fn: any) => fn(db)),
@@ -199,5 +208,110 @@ describe('ReferralService.applyCode - guards', () => {
     await expect(
       svc.applyCode({ tenantId: 't1', referredTenantUserId: 'B', code: codeX.code }),
     ).rejects.toMatchObject({ code: 'LOCKED' });
+  });
+});
+
+describe('ReferralService.getEffectiveReferralChain', () => {
+  it('falls back to source provenance when there is no explicit referral edge', async () => {
+    const { db, state } = makeFakeDb();
+    const svc = new ReferralService(db);
+
+    state.tenantUsers.set('tenant-user-root', {
+      id: 'tenant-user-root',
+      tenantId: 'uprm',
+      sourceTenantUserId: null,
+    });
+    state.tenantUsers.set('tenant-user-psi', {
+      id: 'tenant-user-psi',
+      tenantId: 'psi',
+      sourceTenantUserId: 'tenant-user-root',
+    });
+    state.tenantUsers.set('tenant-user-alice', {
+      id: 'tenant-user-alice',
+      tenantId: 'psi',
+      sourceTenantUserId: 'tenant-user-psi',
+    });
+
+    await expect(svc.getEffectiveReferralChain('psi', 'tenant-user-alice', 3)).resolves.toEqual([
+      expect.objectContaining({
+        ancestorTenantUserId: 'tenant-user-psi',
+        ancestorTenantId: 'psi',
+        descendantTenantUserId: 'tenant-user-alice',
+        depth: 1,
+        relationType: 'source_provenance',
+      }),
+      expect.objectContaining({
+        ancestorTenantUserId: 'tenant-user-root',
+        ancestorTenantId: 'uprm',
+        descendantTenantUserId: 'tenant-user-alice',
+        depth: 2,
+        relationType: 'source_provenance',
+      }),
+    ]);
+  });
+
+  it('extends explicit tenant referral ancestry with source provenance above the last explicit ancestor', async () => {
+    const { db, state } = makeFakeDb();
+    const svc = new ReferralService(db);
+
+    state.tenantUsers.set('tenant-user-root', {
+      id: 'tenant-user-root',
+      tenantId: 'uprm',
+      sourceTenantUserId: null,
+    });
+    state.tenantUsers.set('tenant-user-psi', {
+      id: 'tenant-user-psi',
+      tenantId: 'psi',
+      sourceTenantUserId: 'tenant-user-root',
+    });
+    state.tenantUsers.set('tenant-user-alice', {
+      id: 'tenant-user-alice',
+      tenantId: 'psi',
+      sourceTenantUserId: 'tenant-user-psi',
+    });
+    state.tenantUsers.set('tenant-user-bob', {
+      id: 'tenant-user-bob',
+      tenantId: 'psi',
+      sourceTenantUserId: 'tenant-user-alice',
+    });
+
+    state.ancestry.set('psi:tenant-user-bob:tenant-user-bob', {
+      tenantId: 'psi',
+      ancestorTenantUserId: 'tenant-user-bob',
+      descendantTenantUserId: 'tenant-user-bob',
+      depth: 0,
+      createdAt: new Date(),
+    });
+    state.ancestry.set('psi:tenant-user-bob:tenant-user-alice', {
+      tenantId: 'psi',
+      ancestorTenantUserId: 'tenant-user-alice',
+      descendantTenantUserId: 'tenant-user-bob',
+      depth: 1,
+      createdAt: new Date(),
+    });
+
+    await expect(svc.getEffectiveReferralChain('psi', 'tenant-user-bob', 3)).resolves.toEqual([
+      expect.objectContaining({
+        ancestorTenantUserId: 'tenant-user-alice',
+        ancestorTenantId: 'psi',
+        descendantTenantUserId: 'tenant-user-bob',
+        depth: 1,
+        relationType: 'referral_edge',
+      }),
+      expect.objectContaining({
+        ancestorTenantUserId: 'tenant-user-psi',
+        ancestorTenantId: 'psi',
+        descendantTenantUserId: 'tenant-user-bob',
+        depth: 2,
+        relationType: 'source_provenance',
+      }),
+      expect.objectContaining({
+        ancestorTenantUserId: 'tenant-user-root',
+        ancestorTenantId: 'uprm',
+        descendantTenantUserId: 'tenant-user-bob',
+        depth: 3,
+        relationType: 'source_provenance',
+      }),
+    ]);
   });
 });

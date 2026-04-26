@@ -28,6 +28,7 @@
     "@uprm/ledger": "workspace:*",
     "@uprm/outbox": "workspace:*",
     "@uprm/promoter": "workspace:*",
+    "@uprm/referrals": "workspace:*",
     "@uprm/reporting": "workspace:*",
     "@uprm/rewards": "workspace:*",
     "@uprm/webhooks": "workspace:*",
