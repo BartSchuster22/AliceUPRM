@@ -258,6 +258,9 @@ importers:
       '@uprm/tenants':
         specifier: workspace:*
         version: link:../../packages/domain/tenants
+      '@uprm/wallet':
+        specifier: workspace:*
+        version: link:../../packages/domain/wallet
       class-transformer:
         specifier: ^0.5.1
         version: 0.5.1

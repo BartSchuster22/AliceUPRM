@@ -128,6 +128,18 @@ describe('AdminUsersController', () => {
         ],
         balance: null,
         payouts: [],
+        walletDiagnostics: {
+          walletAccount: {
+            id: 'wa-1',
+            userId: 'user-1',
+            currency: 'credit',
+            status: 'active',
+          },
+          globalBalanceCredits: '512',
+          issuerBalanceCredits: '299',
+          legacyTenantBalanceCredits: '299',
+          parityDeltaCredits: '0',
+        },
         promoterMemberships: [
           {
             id: 'profile-psi',
@@ -181,6 +193,16 @@ describe('AdminUsersController', () => {
             manual_override: true,
           }),
         ],
+        wallet_diagnostics: expect.objectContaining({
+          wallet_account: expect.objectContaining({
+            id: 'wa-1',
+            currency: 'credit',
+          }),
+          global_balance_credits: '512',
+          issuer_balance_credits: '299',
+          legacy_tenant_balance_credits: '299',
+          parity_delta_credits: '0',
+        }),
       }),
     );
   });

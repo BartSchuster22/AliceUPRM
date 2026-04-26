@@ -3,7 +3,11 @@ import { prisma } from '@uprm/db';
 import { AccountService, BalanceService, PostingService } from '@uprm/ledger';
 import { PayoutService } from '@uprm/payouts';
 import { ReferralService } from '@uprm/referrals';
-import { WalletAccountService, WalletGrantService } from '@uprm/wallet';
+import {
+  WalletAccountService,
+  WalletBalanceService,
+  WalletGrantService,
+} from '@uprm/wallet';
 
 export class AdminUsersService {
   private readonly db = prisma;
@@ -14,6 +18,7 @@ export class AdminUsersService {
   private readonly referrals = new ReferralService(prisma);
   private readonly walletAccounts = new WalletAccountService(prisma);
   private readonly walletGrants = new WalletGrantService(prisma);
+  private readonly walletBalances = new WalletBalanceService(prisma);
 
   async listUsers(input: { tenantId: string; q?: string; limit?: number }) {
     const query = input.q?.trim();
@@ -99,6 +104,20 @@ export class AdminUsersService {
       tenantUser: membershipById.get(profile.tenantUserId) ?? null,
     }));
 
+    const walletAccount = await this.walletAccounts.getAccountByUser(
+      tenantUser.userId,
+    );
+    const walletBalance = walletAccount
+      ? await this.walletBalances.getWalletBalance(walletAccount.id)
+      : { walletAccountId: null, currency: 'credit', balanceCredits: 0n };
+    const walletIssuerBalance = walletAccount
+      ? await this.walletBalances.getIssuerBalanceForWallet(
+          walletAccount.id,
+          tenantId,
+        )
+      : { walletAccountId: null, issuerTenantId: tenantId, balanceCredits: 0n };
+    const legacyTenantBalanceCredits = balance ? -balance.balance : 0n;
+
     return {
       tenantUser,
       balance,
@@ -108,6 +127,15 @@ export class AdminUsersService {
       memberships,
       effectiveReferralChain,
       promoterMemberships,
+      walletDiagnostics: {
+        walletAccount,
+        globalBalanceCredits: walletBalance.balanceCredits.toString(),
+        issuerBalanceCredits: walletIssuerBalance.balanceCredits.toString(),
+        legacyTenantBalanceCredits: legacyTenantBalanceCredits.toString(),
+        parityDeltaCredits: (
+          walletIssuerBalance.balanceCredits - legacyTenantBalanceCredits
+        ).toString(),
+      },
     };
   }
 

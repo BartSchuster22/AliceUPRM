@@ -213,6 +213,23 @@ function mapUserDetail(detail: any) {
           : null,
       }),
     ),
+    wallet_diagnostics: detail.walletDiagnostics
+      ? {
+          wallet_account: detail.walletDiagnostics.walletAccount
+            ? {
+                id: detail.walletDiagnostics.walletAccount.id,
+                user_id: detail.walletDiagnostics.walletAccount.userId,
+                currency: detail.walletDiagnostics.walletAccount.currency,
+                status: detail.walletDiagnostics.walletAccount.status,
+              }
+            : null,
+          global_balance_credits: detail.walletDiagnostics.globalBalanceCredits,
+          issuer_balance_credits: detail.walletDiagnostics.issuerBalanceCredits,
+          legacy_tenant_balance_credits:
+            detail.walletDiagnostics.legacyTenantBalanceCredits,
+          parity_delta_credits: detail.walletDiagnostics.parityDeltaCredits,
+        }
+      : null,
   };
 }
 

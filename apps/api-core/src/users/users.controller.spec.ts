@@ -122,8 +122,10 @@ describe('UsersController balance, profile, subscriptions, promoter status, and 
     expect(result).toEqual({ subscriptions: [] });
   });
 
-  it('returns formatted balance using the fixed reward credit currency', async () => {
-    const tenantUser = { id: 'tu-alice' };
+  it('returns formatted balance using the fixed reward credit currency when wallet v2 reads are disabled', async () => {
+    const priorFlag = process.env.UPRM_WALLET_V2_READS;
+    process.env.UPRM_WALLET_V2_READS = 'false';
+    const tenantUser = { id: 'tu-alice', userId: 'user-1' };
     const tenant = { id: 'tenant-1', baseCurrency: 'EUR' };
     const balance = { balance: -299n };
 
@@ -137,20 +139,87 @@ describe('UsersController balance, profile, subscriptions, promoter status, and 
       getUserBalance: jest.fn().mockResolvedValue(balance),
     };
 
-    const result = await (controller as any).balance('tu-alice', {
-      uprm: { tenantId: 'tenant-1' },
-    });
+    try {
+      const result = await (controller as any).balance('tu-alice', {
+        uprm: { tenantId: 'tenant-1' },
+      });
 
-    expect(result).toEqual({
-      tenant_user_id: 'tu-alice',
-      base_currency: FIXED_REWARD_CURRENCY,
-      balance_credits: 299,
-      balance_display: '299 Credits',
-      balance_as_money: {
-        amount_minor: 299,
-        formatted: '299 Credits',
-      },
-    });
+      expect(
+        (controller as any).balanceSvc.getUserBalance,
+      ).toHaveBeenCalledWith('tenant-1', 'tu-alice', FIXED_REWARD_CURRENCY);
+      expect(result).toEqual({
+        tenant_user_id: 'tu-alice',
+        base_currency: FIXED_REWARD_CURRENCY,
+        balance_credits: 299,
+        balance_display: '299 Credits',
+        balance_as_money: {
+          amount_minor: 299,
+          formatted: '299 Credits',
+        },
+      });
+    } finally {
+      process.env.UPRM_WALLET_V2_READS = priorFlag;
+    }
+  });
+
+  it('returns the global wallet balance when wallet v2 reads are enabled', async () => {
+    const priorFlag = process.env.UPRM_WALLET_V2_READS;
+    process.env.UPRM_WALLET_V2_READS = 'true';
+    (controller as any).svc = {
+      getTenantUser: jest
+        .fn()
+        .mockResolvedValue({ id: 'tu-alice', userId: 'user-1' }),
+    };
+    (controller as any).tenantSvc = {
+      getTenant: jest
+        .fn()
+        .mockResolvedValue({ id: 'tenant-1', baseCurrency: 'EUR' }),
+    };
+    (controller as any).walletAccounts = {
+      ensureAccount: jest.fn().mockResolvedValue({
+        id: 'wa-1',
+        userId: 'user-1',
+        currency: 'credit',
+        status: 'active',
+      }),
+    };
+    (controller as any).walletBalances = {
+      getWalletBalance: jest.fn().mockResolvedValue({
+        walletAccountId: 'wa-1',
+        currency: 'credit',
+        balanceCredits: 512n,
+      }),
+    };
+
+    try {
+      const result = await (controller as any).balance('tu-alice', {
+        uprm: { tenantId: 'tenant-1' },
+      });
+
+      expect(
+        (controller as any).walletAccounts.ensureAccount,
+      ).toHaveBeenCalledWith({
+        userId: 'user-1',
+      });
+      expect(
+        (controller as any).walletBalances.getWalletBalance,
+      ).toHaveBeenCalledWith('wa-1');
+      expect(result).toEqual({
+        tenant_user_id: 'tu-alice',
+        base_currency: FIXED_REWARD_CURRENCY,
+        balance_credits: 512,
+        balance_display: '512 Credits',
+        balance_as_money: {
+          amount_minor: 512,
+          formatted: '512 Credits',
+        },
+        balance_source: 'wallet_v2',
+        wallet_account_id: 'wa-1',
+        global_user_id: 'user-1',
+      });
+    } finally {
+      process.env.UPRM_WALLET_V2_READS = priorFlag;
+    }
   });
 
   it('defaults a new user source to the current tenant owner when no explicit source user is supplied', async () => {

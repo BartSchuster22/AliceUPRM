@@ -17,6 +17,7 @@ import { IdentityError, IdentityService } from '@uprm/identity';
 import { ReferralService } from '@uprm/referrals';
 import { BalanceService } from '@uprm/ledger';
 import { PromoterService } from '@uprm/promoter';
+import { WalletAccountService, WalletBalanceService } from '@uprm/wallet';
 import { HmacAuthGuard } from '../auth/hmac-auth.guard';
 import { CreateUserDto } from './dto/create-user.dto';
 import { RequestPayoutDto } from './dto/request-payout.dto';
@@ -30,6 +31,8 @@ export class UsersController {
   private readonly balanceSvc = new BalanceService();
   private readonly payoutSvc = new PayoutService();
   private readonly promoterSvc = new PromoterService();
+  private readonly walletAccounts = new WalletAccountService();
+  private readonly walletBalances = new WalletBalanceService();
 
   @Post()
   async create(@Body() dto: CreateUserDto, @Req() req: any) {
@@ -100,10 +103,32 @@ export class UsersController {
     const tu = await this.svc.getTenantUser(tenantId, id);
     if (!tu) throw new NotFoundException('tenant user not found');
 
-    const tenant = await this.tenantSvc.getTenant(tenantId);
-    if (!tenant) throw new NotFoundException('tenant not found');
-
     const currency = FIXED_REWARD_CURRENCY;
+
+    if (isWalletV2ReadEnabled()) {
+      const walletAccount = await this.walletAccounts.ensureAccount({
+        userId: tu.userId,
+      });
+      const walletBalance = await this.walletBalances.getWalletBalance(
+        walletAccount.id,
+      );
+      const amountMinor = Number(walletBalance.balanceCredits);
+
+      return {
+        tenant_user_id: id,
+        base_currency: currency,
+        balance_credits: amountMinor,
+        balance_display: `${amountMinor} Credits`,
+        balance_as_money: {
+          amount_minor: amountMinor,
+          formatted: formatMinorCurrency(amountMinor, currency),
+        },
+        balance_source: 'wallet_v2',
+        wallet_account_id: walletAccount.id,
+        global_user_id: tu.userId,
+      };
+    }
+
     const accountBalance = await this.balanceSvc.getUserBalance(
       tenantId,
       id,
@@ -199,6 +224,11 @@ function formatMinorCurrency(amountMinor: number, currency: string): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amountMinor / 100);
+}
+
+function isWalletV2ReadEnabled(): boolean {
+  const raw = process.env.UPRM_WALLET_V2_READS?.trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
 }
 
 function mapPayout(payout: any) {
