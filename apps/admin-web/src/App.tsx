@@ -18,6 +18,7 @@ import {
   fetchFraudCases,
   fetchLedger,
   fetchPromoterApplications,
+  fetchPromoterPerformance,
   fetchReports,
   fetchSettlementCycles,
   fetchTenants,
@@ -25,6 +26,7 @@ import {
   fetchUsers,
   fetchWebhookDeliveries,
   login,
+  manualCreatePromoter,
   openSettlementCycle,
   replayWebhookDelivery,
   resolveFraudCase,
@@ -34,6 +36,7 @@ import {
   type FraudCaseRow,
   type LedgerRow,
   type PromoterApplicationRow,
+  type PromoterPerformance,
   type ReportsOverview,
   type SettlementCycleRow,
   type TenantRecord,
@@ -44,27 +47,9 @@ import {
 import { RewardConfigEditor } from './RewardConfigEditor';
 import { PromoterConfigEditor } from './PromoterConfigEditor';
 import { FraudConfigEditor } from './FraudConfigEditor';
-
-type ViewKey =
-  | 'tenants'
-  | 'users'
-  | 'wallets'
-  | 'reports'
-  | 'promoters'
-  | 'fraud'
-  | 'settlements'
-  | 'webhooks';
-
-const NAV_ITEMS: Array<{ key: ViewKey; label: string }> = [
-  { key: 'tenants', label: 'Tenants' },
-  { key: 'users', label: 'Users' },
-  { key: 'wallets', label: 'Wallets' },
-  { key: 'reports', label: 'Reports' },
-  { key: 'webhooks', label: 'Webhooks' },
-  { key: 'promoters', label: 'Promoters' },
-  { key: 'fraud', label: 'Fraud' },
-  { key: 'settlements', label: 'Settlements' },
-];
+import { buildPromoterApplicationRows, summarizePromoterPerformance } from './promoter-browser';
+import { combineUserRows, type UserListRow } from './user-browser';
+import { NAV_ITEMS, type ViewKey } from './dashboard-nav';
 
 const TOKEN_KEY = 'uprmAdminBearerToken';
 const LOGIN_PATH = '/login';
@@ -75,9 +60,11 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [token, setToken] = useState('');
   const [status, setStatus] = useState('Sign in to access the UPRM admin dashboard.');
-  const [view, setView] = useState<ViewKey>('tenants');
+  const [view, setView] = useState<ViewKey>('home');
   const [tenants, setTenants] = useState<TenantRecord[]>([]);
   const [selectedTenantId, setSelectedTenantId] = useState('');
+  const [homeTenantFilterId, setHomeTenantFilterId] = useState('all');
+  const [tenantDetailOpen, setTenantDetailOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pathname, setPathname] = useState(window.location.pathname || DASHBOARD_PATH);
@@ -89,8 +76,10 @@ export default function App() {
   });
 
   const [userQuery, setUserQuery] = useState('');
-  const [users, setUsers] = useState<TenantUserSummary[]>([]);
+  const [userTenantFilterId, setUserTenantFilterId] = useState('all');
+  const [users, setUsers] = useState<UserListRow[]>([]);
   const [selectedUserId, setSelectedUserId] = useState('');
+  const [userDetailOpen, setUserDetailOpen] = useState(false);
   const [userDetail, setUserDetail] = useState<TenantUserDetail | null>(null);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [manualAdjustment, setManualAdjustment] = useState({
@@ -100,8 +89,26 @@ export default function App() {
   });
 
   const [promoterApplications, setPromoterApplications] = useState<PromoterApplicationRow[]>([]);
+  const [promoterUserDirectory, setPromoterUserDirectory] = useState<UserListRow[]>([]);
   const [selectedPromoterApplicationId, setSelectedPromoterApplicationId] = useState('');
+  const [promoterDetailOpen, setPromoterDetailOpen] = useState(false);
   const [promoterReviewNote, setPromoterReviewNote] = useState('');
+  const [promoterReviewStatus, setPromoterReviewStatus] = useState('promoter');
+  const [promoterListStatusFilter, setPromoterListStatusFilter] = useState('');
+  const [promoterRankBy, setPromoterRankBy] = useState<'activity_time' | 'reward_performance'>(
+    'activity_time',
+  );
+  const [promoterPerformanceSummaries, setPromoterPerformanceSummaries] = useState<
+    Record<string, ReturnType<typeof summarizePromoterPerformance>>
+  >({});
+  const [promoterPerformanceDays, setPromoterPerformanceDays] = useState(30);
+  const [promoterPerformance, setPromoterPerformance] = useState<PromoterPerformance | null>(null);
+  const [manualPromoterForm, setManualPromoterForm] = useState({
+    tenantId: '',
+    tenantUserId: '',
+    promoterStatus: 'promoter',
+    note: '',
+  });
   const [reportDays, setReportDays] = useState(30);
   const [reports, setReports] = useState<ReportsOverview | null>(null);
   const [fraudCases, setFraudCases] = useState<FraudCaseRow[]>([]);
@@ -127,10 +134,24 @@ export default function App() {
 
   const visiblePromoterApplications = useMemo(
     () =>
-      selectedTenantId
-        ? promoterApplications.filter((application) => application.tenant_id === selectedTenantId)
-        : promoterApplications,
-    [promoterApplications, selectedTenantId],
+      buildPromoterApplicationRows(
+        promoterApplications,
+        promoterUserDirectory,
+        promoterPerformanceSummaries,
+        {
+          tenantId: selectedTenantId || 'all',
+          status: promoterListStatusFilter,
+          rankBy: promoterRankBy,
+        },
+      ),
+    [
+      promoterApplications,
+      promoterPerformanceSummaries,
+      promoterListStatusFilter,
+      promoterRankBy,
+      promoterUserDirectory,
+      selectedTenantId,
+    ],
   );
 
   const selectedVisiblePromoterApplication = useMemo(
@@ -141,6 +162,23 @@ export default function App() {
       visiblePromoterApplications[0] ??
       null,
     [visiblePromoterApplications, selectedPromoterApplicationId],
+  );
+
+  const manualPromoterTenantUsers = useMemo(
+    () =>
+      promoterUserDirectory.filter((user) =>
+        manualPromoterForm.tenantId ? user.tenant_id === manualPromoterForm.tenantId : true,
+      ),
+    [manualPromoterForm.tenantId, promoterUserDirectory],
+  );
+
+  const selectedPromoterPerformanceSummary = useMemo(
+    () =>
+      selectedVisiblePromoterApplication
+        ? (promoterPerformanceSummaries[selectedVisiblePromoterApplication.id] ??
+          summarizePromoterPerformance({ metrics_daily: [] }))
+        : summarizePromoterPerformance({ metrics_daily: [] }),
+    [promoterPerformanceSummaries, selectedVisiblePromoterApplication],
   );
 
   const selectedSettlementCycle = useMemo(
@@ -182,9 +220,11 @@ export default function App() {
   }, [isAuthenticated, pathname]);
 
   useEffect(() => {
-    if (!token || !selectedTenantId) return;
-    void loadUsers(token, selectedTenantId, userQuery);
-  }, [token, selectedTenantId]);
+    if (!token) return;
+    if (view === 'users') {
+      void loadUsers(token, userTenantFilterId, userQuery);
+    }
+  }, [token, view, userTenantFilterId]);
 
   useEffect(() => {
     if (!selectedTenant) return;
@@ -197,22 +237,35 @@ export default function App() {
 
   useEffect(() => {
     if (!token) return;
+    if (view === 'home') {
+      void loadReports(token, homeTenantFilterId === 'all' ? '' : homeTenantFilterId, reportDays);
+      return;
+    }
     if (view === 'webhooks') {
       void loadWebhookDeliveries(token);
+      return;
     }
     if (view === 'promoters') {
       void loadPromoterState(token);
-    }
-    if (view === 'reports') {
-      void loadReports(token, selectedTenantId, reportDays);
+      return;
     }
     if (view === 'fraud') {
       void loadFraudState(token);
+      return;
     }
     if (view === 'settlements') {
       void loadSettlementState(token);
     }
-  }, [view, token, selectedTenantId, reportDays, fraudStatusFilter, fraudSeverityFilter]);
+  }, [
+    view,
+    token,
+    homeTenantFilterId,
+    reportDays,
+    tenants,
+    selectedTenantId,
+    fraudStatusFilter,
+    fraudSeverityFilter,
+  ]);
 
   useEffect(() => {
     const nextSelectedId =
@@ -229,7 +282,31 @@ export default function App() {
 
   useEffect(() => {
     setPromoterReviewNote('');
+    setPromoterReviewStatus(selectedVisiblePromoterApplication?.promoter_status || 'promoter');
+    setPromoterPerformance(null);
   }, [selectedVisiblePromoterApplication?.id]);
+
+  useEffect(() => {
+    if (!token || view !== 'promoters' || !selectedVisiblePromoterApplication?.id) return;
+    void loadPromoterPerformance(
+      token,
+      selectedVisiblePromoterApplication.id,
+      promoterPerformanceDays,
+    );
+  }, [token, view, selectedVisiblePromoterApplication?.id, promoterPerformanceDays]);
+
+  useEffect(() => {
+    if (view !== 'promoters') return;
+    setManualPromoterForm((current) => {
+      const nextTenantId = selectedTenantId || current.tenantId;
+      if (!nextTenantId || nextTenantId === current.tenantId) return current;
+      return {
+        ...current,
+        tenantId: nextTenantId,
+        tenantUserId: '',
+      };
+    });
+  }, [selectedTenantId, view]);
 
   function navigate(nextPath: string, replace = false) {
     const normalized = nextPath === LOGIN_PATH ? LOGIN_PATH : DASHBOARD_PATH;
@@ -244,7 +321,9 @@ export default function App() {
     try {
       const result = await fetchTenants(nextToken);
       setTenants(result);
-      setSelectedTenantId((current) => current || result[0]?.id || '');
+      setSelectedTenantId((current) =>
+        current && result.some((tenant) => tenant.id === current) ? current : '',
+      );
       setStatus(result.length ? `Loaded ${result.length} tenant(s).` : 'No tenants returned.');
       setIsAuthenticated(true);
     } catch (error) {
@@ -260,16 +339,20 @@ export default function App() {
 
   async function refreshCurrentView() {
     if (!token) return;
+    if (view === 'home') {
+      await loadReports(token, homeTenantFilterId === 'all' ? '' : homeTenantFilterId, reportDays);
+      return;
+    }
+    if (view === 'users') {
+      await loadUsers(token, userTenantFilterId, userQuery);
+      return;
+    }
     if (view === 'webhooks') {
       await loadWebhookDeliveries(token);
       return;
     }
     if (view === 'promoters') {
       await loadPromoterState(token);
-      return;
-    }
-    if (view === 'reports') {
-      await loadReports(token, selectedTenantId, reportDays);
       return;
     }
     if (view === 'fraud') {
@@ -283,25 +366,38 @@ export default function App() {
     await loadTenants(token);
   }
 
-  async function loadUsers(nextToken: string, tenantId: string, query = '') {
+  async function loadUsers(nextToken: string, tenantFilterId: string, query = '') {
     setLoading(true);
     setStatus('Loading users…');
     try {
-      const result = await fetchUsers(nextToken, tenantId, query);
+      const tenantScope =
+        tenantFilterId === 'all'
+          ? tenants
+          : tenants.filter((tenant) => tenant.id === tenantFilterId);
+      const resultSets = await Promise.all(
+        tenantScope.map(async (tenant) => ({
+          tenantId: tenant.id,
+          users: await fetchUsers(nextToken, tenant.id, query),
+        })),
+      );
+      const result = combineUserRows(tenants, resultSets);
       setUsers(result);
       const chosenUserId =
         selectedUserId && result.some((user) => user.id === selectedUserId)
           ? selectedUserId
           : (result[0]?.id ?? '');
       setSelectedUserId(chosenUserId);
-      if (chosenUserId) {
-        await loadUserContext(nextToken, tenantId, chosenUserId);
+      if (userDetailOpen && chosenUserId) {
+        const selectedRow = result.find((user) => user.id === chosenUserId);
+        if (selectedRow) {
+          await loadUserContext(nextToken, selectedRow.tenant_id, chosenUserId);
+        }
       } else {
         setUserDetail(null);
         setLedger([]);
       }
       setStatus(
-        result.length ? `Loaded ${result.length} user(s).` : 'No users found for this tenant.',
+        result.length ? `Loaded ${result.length} user(s).` : 'No users found for this filter.',
       );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Failed to load users.');
@@ -383,17 +479,20 @@ export default function App() {
   }
 
   async function handleUserSearch() {
-    if (!token || !selectedTenantId) return;
-    await loadUsers(token, selectedTenantId, userQuery);
+    if (!token) return;
+    await loadUsers(token, userTenantFilterId, userQuery);
   }
 
   async function selectUserAndLoad(tenantUserId: string) {
-    if (!token || !selectedTenantId) return;
+    if (!token) return;
+    const selectedRow = users.find((user) => user.id === tenantUserId);
+    if (!selectedRow) return;
     setSelectedUserId(tenantUserId);
+    setUserDetailOpen(true);
     setLoading(true);
     setStatus('Loading user detail…');
     try {
-      await loadUserContext(token, selectedTenantId, tenantUserId);
+      await loadUserContext(token, selectedRow.tenant_id, tenantUserId);
       setStatus('User detail loaded.');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Failed to load user detail.');
@@ -402,19 +501,25 @@ export default function App() {
     }
   }
 
+  function closeUserDetail() {
+    setUserDetailOpen(false);
+    setUserDetail(null);
+    setLedger([]);
+  }
+
   async function submitManualAdjustment() {
-    if (!token || !selectedTenantId || !selectedUser) return;
+    if (!token || !selectedUser) return;
     setLoading(true);
     try {
       await createManualAdjustment(token, selectedUser.id, {
-        tenantId: selectedTenantId,
+        tenantId: selectedUser.tenant_id,
         amountMinor: manualAdjustment.amountMinor,
         reasonCode: manualAdjustment.reasonCode,
         note: manualAdjustment.note,
       });
       setStatus('Manual balance adjustment posted.');
       setManualAdjustment({ amountMinor: '0', reasonCode: '', note: '' });
-      await loadUserContext(token, selectedTenantId, selectedUser.id);
+      await loadUserContext(token, selectedUser.tenant_id, selectedUser.id);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Failed to create manual adjustment.');
     } finally {
@@ -449,11 +554,21 @@ export default function App() {
 
   async function loadPromoterState(nextToken: string) {
     try {
-      const rows = await fetchPromoterApplications(nextToken);
+      const [rows, userDirectory] = await Promise.all([
+        fetchPromoterApplications(nextToken),
+        loadPromoterUserDirectory(nextToken),
+      ]);
+      const performanceSummaries = await loadPromoterPerformanceSummaryMap(nextToken, rows);
       setPromoterApplications(rows);
+      setPromoterUserDirectory(userDirectory);
+      setPromoterPerformanceSummaries(performanceSummaries);
       setSelectedPromoterApplicationId((current) =>
         current && rows.some((row) => row.id === current) ? current : (rows[0]?.id ?? ''),
       );
+      setManualPromoterForm((current) => ({
+        ...current,
+        tenantId: current.tenantId || selectedTenantId || rows[0]?.tenant_id || '',
+      }));
       setStatus(
         rows.length
           ? `Loaded ${rows.length} promoter application(s).`
@@ -462,7 +577,55 @@ export default function App() {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Failed to load promoter applications.');
       setPromoterApplications([]);
+      setPromoterUserDirectory([]);
+      setPromoterPerformanceSummaries({});
       setSelectedPromoterApplicationId('');
+      setPromoterPerformance(null);
+    }
+  }
+
+  async function loadPromoterUserDirectory(nextToken: string) {
+    const tenantScope = selectedTenantId
+      ? tenants.filter((tenant) => tenant.id === selectedTenantId)
+      : tenants;
+    if (!tenantScope.length) return [];
+    const resultSets = await Promise.all(
+      tenantScope.map(async (tenant) => ({
+        tenantId: tenant.id,
+        users: await fetchUsers(nextToken, tenant.id),
+      })),
+    );
+    return combineUserRows(tenants, resultSets);
+  }
+
+  async function loadPromoterPerformanceSummaryMap(
+    nextToken: string,
+    rows: PromoterApplicationRow[],
+  ): Promise<Record<string, ReturnType<typeof summarizePromoterPerformance>>> {
+    const summaries = await Promise.all(
+      rows.map(async (row) => {
+        try {
+          const performance = await fetchPromoterPerformance(nextToken, row.id, 30);
+          return [row.id, summarizePromoterPerformance(performance)] as const;
+        } catch {
+          return [row.id, summarizePromoterPerformance({ metrics_daily: [] })] as const;
+        }
+      }),
+    );
+    return Object.fromEntries(summaries);
+  }
+
+  async function loadPromoterPerformance(nextToken: string, applicationId: string, days: number) {
+    try {
+      const performance = await fetchPromoterPerformance(nextToken, applicationId, days);
+      setPromoterPerformance(performance);
+      setPromoterPerformanceSummaries((current) => ({
+        ...current,
+        [applicationId]: summarizePromoterPerformance(performance),
+      }));
+    } catch (error) {
+      setPromoterPerformance(null);
+      setStatus(error instanceof Error ? error.message : 'Failed to load promoter performance.');
     }
   }
 
@@ -470,10 +633,17 @@ export default function App() {
     if (!token) return;
     setLoading(true);
     try {
-      await reviewPromoterApplication(token, id, action, promoterReviewNote.trim() || undefined);
+      await reviewPromoterApplication(
+        token,
+        id,
+        action,
+        promoterReviewNote.trim() || undefined,
+        action === 'approve' ? promoterReviewStatus : undefined,
+      );
       setStatus(`Promoter application ${action}d.`);
       setPromoterReviewNote('');
       await loadPromoterState(token);
+      await loadPromoterPerformance(token, id, promoterPerformanceDays);
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : `Failed to ${action} promoter application.`,
@@ -483,12 +653,59 @@ export default function App() {
     }
   }
 
-  async function loadReports(nextToken: string, tenantId: string, days: number) {
-    if (!tenantId) {
-      setReports(null);
+  async function submitManualPromoter() {
+    if (!token) return;
+    if (!manualPromoterForm.tenantId || !manualPromoterForm.tenantUserId) {
+      setStatus('Select a tenant and tenant user before adding a promoter.');
       return;
     }
+    setLoading(true);
     try {
+      const created = await manualCreatePromoter(token, {
+        tenantId: manualPromoterForm.tenantId,
+        tenantUserId: manualPromoterForm.tenantUserId,
+        promoterStatus: manualPromoterForm.promoterStatus,
+        note: manualPromoterForm.note,
+      });
+      setManualPromoterForm((current) => ({
+        ...current,
+        tenantUserId: '',
+        note: '',
+      }));
+      setPromoterDetailOpen(true);
+      setSelectedPromoterApplicationId(created.id);
+      setStatus('Promoter added manually.');
+      await loadPromoterState(token);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Failed to add promoter manually.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadReports(nextToken: string, tenantId: string, days: number) {
+    try {
+      if (!tenantId) {
+        if (!tenants.length) {
+          setReports(null);
+          return;
+        }
+        const tenantReports = await Promise.all(
+          tenants.map(async (tenant) => ({
+            tenant,
+            report: await fetchReports(nextToken, tenant.id, days),
+          })),
+        );
+        setReports(
+          aggregateReportsOverview(
+            tenantReports.map((item) => item.report),
+            days,
+          ),
+        );
+        setStatus(`Loaded ecosystem reports for the last ${days} day(s).`);
+        return;
+      }
+
       setReports(await fetchReports(nextToken, tenantId, days));
       setStatus(`Loaded reports for the last ${days} day(s).`);
     } catch (error) {
@@ -607,6 +824,97 @@ export default function App() {
     }
   }
 
+  function openTenantDetail(tenantId: string) {
+    setSelectedTenantId(tenantId);
+    setTenantDetailOpen(true);
+  }
+
+  function closeTenantDetail() {
+    setTenantDetailOpen(false);
+    if (view === 'tenants') {
+      setSelectedTenantId('');
+    }
+  }
+
+  function renderTenantManagementPanels(showCloseButton = false) {
+    if (!selectedTenant) {
+      return <p className="muted">No tenant selected.</p>;
+    }
+
+    return (
+      <section className="panel-grid">
+        <section className="panel">
+          <div className="panel-inline tenant-detail-header">
+            <div>
+              <h3>Tenant details</h3>
+              <p className="muted">Operational detail for {selectedTenant.name}.</p>
+            </div>
+            {showCloseButton ? (
+              <button className="secondary" onClick={closeTenantDetail}>
+                Close
+              </button>
+            ) : null}
+          </div>
+          <dl className="detail-list">
+            <div>
+              <dt>Name</dt>
+              <dd>{selectedTenant.name}</dd>
+            </div>
+            <div>
+              <dt>Slug</dt>
+              <dd>{selectedTenant.slug}</dd>
+            </div>
+            <div>
+              <dt>Currency</dt>
+              <dd>{selectedTenant.baseCurrency}</dd>
+            </div>
+            <div>
+              <dt>Status</dt>
+              <dd>{selectedTenant.status}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="panel">
+          <h3>Tenant config editor</h3>
+          <RewardConfigEditor
+            value={tenantConfigDrafts.rewardConfig}
+            onChange={(rewardConfig) =>
+              setTenantConfigDrafts((current) => ({
+                ...current,
+                rewardConfig,
+              }))
+            }
+            disabled={loading}
+          />
+          <PromoterConfigEditor
+            value={tenantConfigDrafts.promoterConfig}
+            onChange={(promoterConfig) =>
+              setTenantConfigDrafts((current) => ({
+                ...current,
+                promoterConfig,
+              }))
+            }
+            disabled={loading}
+          />
+          <FraudConfigEditor
+            value={tenantConfigDrafts.fraudConfig}
+            onChange={(fraudConfig) =>
+              setTenantConfigDrafts((current) => ({
+                ...current,
+                fraudConfig,
+              }))
+            }
+            disabled={loading}
+          />
+          <button className="primary" onClick={() => void saveTenantConfig()} disabled={loading}>
+            Save config
+          </button>
+        </section>
+      </section>
+    );
+  }
+
   if (pathname === LOGIN_PATH || !isAuthenticated) {
     return (
       <main className="login-page">
@@ -665,20 +973,26 @@ export default function App() {
           </button>
         </div>
 
-        <label className="field">
-          <span>Tenant</span>
-          <select
-            value={selectedTenant?.id ?? ''}
-            onChange={(event) => setSelectedTenantId(event.target.value)}
-            disabled={!tenants.length}
-          >
-            {tenants.map((tenant) => (
-              <option key={tenant.id} value={tenant.id}>
-                {tenant.name} ({tenant.slug})
-              </option>
-            ))}
-          </select>
-        </label>
+        {view === 'webhooks' ||
+        view === 'promoters' ||
+        view === 'fraud' ||
+        view === 'settlements' ? (
+          <label className="field">
+            <span>Tenant</span>
+            <select
+              value={selectedTenantId}
+              onChange={(event) => setSelectedTenantId(event.target.value)}
+              disabled={!tenants.length}
+            >
+              <option value="">All tenants</option>
+              {tenants.map((tenant) => (
+                <option key={tenant.id} value={tenant.id}>
+                  {tenant.name} ({tenant.slug})
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
         <nav className="nav">
           {NAV_ITEMS.map((item) => (
@@ -708,92 +1022,323 @@ export default function App() {
           </button>
         </header>
 
-        {view === 'tenants' && (
-          <section className="panel-grid">
+        {view === 'home' && (
+          <section className="panel-grid panel-grid-wide">
             <section className="panel">
-              <h3>Tenant directory</h3>
-              <ul className="tenant-list">
-                {tenants.map((tenant) => (
-                  <li key={tenant.id}>
-                    <button
-                      className={
-                        tenant.id === selectedTenant?.id ? 'tenant-button active' : 'tenant-button'
-                      }
-                      onClick={() => setSelectedTenantId(tenant.id)}
-                    >
-                      <span>{tenant.name}</span>
-                      <small>
-                        {tenant.slug} · {tenant.baseCurrency} · {tenant.status}
-                      </small>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-
-            <section className="panel">
-              <h3>Tenant config editor</h3>
-              {selectedTenant ? (
-                <>
-                  <RewardConfigEditor
-                    value={tenantConfigDrafts.rewardConfig}
-                    onChange={(rewardConfig) =>
-                      setTenantConfigDrafts((current) => ({
-                        ...current,
-                        rewardConfig,
-                      }))
-                    }
-                    disabled={loading}
-                  />
-                  <PromoterConfigEditor
-                    value={tenantConfigDrafts.promoterConfig}
-                    onChange={(promoterConfig) =>
-                      setTenantConfigDrafts((current) => ({
-                        ...current,
-                        promoterConfig,
-                      }))
-                    }
-                    disabled={loading}
-                  />
-                  <FraudConfigEditor
-                    value={tenantConfigDrafts.fraudConfig}
-                    onChange={(fraudConfig) =>
-                      setTenantConfigDrafts((current) => ({
-                        ...current,
-                        fraudConfig,
-                      }))
-                    }
-                    disabled={loading}
-                  />
-                  <button
-                    className="primary"
-                    onClick={() => void saveTenantConfig()}
-                    disabled={loading}
+              <div className="toolbar-inline">
+                <label className="field">
+                  <span>Range (days)</span>
+                  <select
+                    value={reportDays}
+                    onChange={(event) => setReportDays(Number(event.target.value))}
                   >
-                    Save config
-                  </button>
+                    <option value={30}>30</option>
+                    <option value={60}>60</option>
+                    <option value={90}>90</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Tenant</span>
+                  <select
+                    value={homeTenantFilterId}
+                    onChange={(event) => {
+                      const nextValue = event.target.value;
+                      setHomeTenantFilterId(nextValue);
+                      if (nextValue === 'all') {
+                        setSelectedTenantId('');
+                        setTenantDetailOpen(false);
+                      } else {
+                        setSelectedTenantId(nextValue);
+                      }
+                    }}
+                  >
+                    <option value="all">All</option>
+                    {tenants.map((tenant) => (
+                      <option key={tenant.id} value={tenant.id}>
+                        {tenant.name} ({tenant.slug})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  className="secondary"
+                  onClick={() =>
+                    token &&
+                    void loadReports(
+                      token,
+                      homeTenantFilterId === 'all' ? '' : homeTenantFilterId,
+                      reportDays,
+                    )
+                  }
+                  disabled={!token || loading}
+                >
+                  Reload reports
+                </button>
+              </div>
+              {reports ? (
+                <>
+                  <div className="detail-list">
+                    <div>
+                      <dt>Tenant scope</dt>
+                      <dd>
+                        {homeTenantFilterId === 'all'
+                          ? 'All tenants'
+                          : selectedTenant?.name || reports.tenant_id}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Range</dt>
+                      <dd>{reports.range_days} days</dd>
+                    </div>
+                    <div>
+                      <dt>Total conversion events</dt>
+                      <dd>
+                        {reports.conversion_daily.reduce((sum, row) => sum + row.event_count, 0)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Current liability</dt>
+                      <dd>
+                        {formatLiabilitySummary(
+                          lastItem(reports.tenant_liability_daily)?.display_liability_minor,
+                          lastItem(reports.tenant_liability_daily)?.currency,
+                        )}
+                      </dd>
+                    </div>
+                  </div>
+
+                  <h3>Conversions</h3>
+                  <ChartBox>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <LineChart data={buildConversionChartData(reports)}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="day" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="invoice_paid" stroke="#2563eb" />
+                        <Line type="monotone" dataKey="purchase_completed" stroke="#16a34a" />
+                        <Line type="monotone" dataKey="user_registered" stroke="#9333ea" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </ChartBox>
+
+                  <h3>Reward performance</h3>
+                  <ChartBox>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <BarChart data={buildRewardChartData(reports)}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="day" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="rewardExpenseMinor" fill="#f59e0b" />
+                        <Bar dataKey="postedScheduledCount" fill="#0f766e" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartBox>
+
+                  <h3>Tenant liability</h3>
+                  <ChartBox>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <LineChart data={buildLiabilityChartData(reports)}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="day" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="displayLiabilityMinor" stroke="#dc2626" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </ChartBox>
+
+                  <h3>Cohort retention</h3>
+                  <ChartBox>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <BarChart data={buildRetentionChartData(reports)}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="cohort" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="retentionRatePercent" fill="#7c3aed" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartBox>
                 </>
               ) : (
-                <p className="muted">No tenant selected.</p>
+                <p className="muted">No reporting data loaded yet.</p>
               )}
             </section>
+
+            {homeTenantFilterId !== 'all' && selectedTenant
+              ? renderTenantManagementPanels(false)
+              : null}
           </section>
         )}
 
-        {view === 'users' && (
-          <section className="panel-grid panel-grid-wide">
+        {view === 'users' &&
+          (userDetailOpen && userDetail && selectedUser ? (
+            <section className="panel-grid panel-grid-wide">
+              <section className="panel">
+                <div className="panel-inline tenant-detail-header">
+                  <div>
+                    <h3>User details</h3>
+                    <p className="muted">
+                      {selectedUser.username || selectedUser.email || selectedUser.external_user_id}
+                    </p>
+                  </div>
+                  <button className="secondary" onClick={closeUserDetail}>
+                    Close
+                  </button>
+                </div>
+                <dl className="detail-list">
+                  <div>
+                    <dt>Name</dt>
+                    <dd>
+                      {userDetail.tenant_user.username || userDetail.tenant_user.email || '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Status</dt>
+                    <dd>{userDetail.tenant_user.tenant_status}</dd>
+                  </div>
+                  <div>
+                    <dt>From tenant</dt>
+                    <dd>
+                      {selectedUser.tenant_name
+                        ? `${selectedUser.tenant_name} (${selectedUser.tenant_slug})`
+                        : selectedUser.tenant_id}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Wallet</dt>
+                    <dd>
+                      {userDetail.balance
+                        ? `${userDetail.balance.display_balance_minor} ${userDetail.balance.currency}`
+                        : 'No balance yet'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Email</dt>
+                    <dd>{userDetail.tenant_user.email || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>External user id</dt>
+                    <dd>{userDetail.tenant_user.external_user_id}</dd>
+                  </div>
+                  <div>
+                    <dt>Source tenant</dt>
+                    <dd>
+                      {userDetail.source_tenant
+                        ? `${userDetail.source_tenant.name} (${userDetail.source_tenant.slug})`
+                        : userDetail.tenant_user.source_tenant_id || '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Source user</dt>
+                    <dd>
+                      {userDetail.source_user
+                        ? `${userDetail.source_user.username || userDetail.source_user.email || userDetail.source_user.external_user_id} (${userDetail.source_user.entity_type})`
+                        : userDetail.tenant_user.source_tenant_user_id || '—'}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+
+              <section className="panel">
+                <h3>Ledger statement</h3>
+                {ledger.length ? (
+                  <ul className="data-list compact-list">
+                    {ledger.map((row) => (
+                      <li key={row.posting_id}>
+                        <strong>
+                          {row.amount_minor} {row.currency}
+                        </strong>{' '}
+                        · {row.account_type}
+                        <br />
+                        <span className="muted">
+                          {row.description} · {formatDate(row.created_at)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted">No ledger postings for this user yet.</p>
+                )}
+
+                <h3>Manual balance adjustment</h3>
+                <label className="field">
+                  <span>Amount minor</span>
+                  <input
+                    value={manualAdjustment.amountMinor}
+                    onChange={(event) =>
+                      setManualAdjustment((current) => ({
+                        ...current,
+                        amountMinor: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="field">
+                  <span>Reason code</span>
+                  <input
+                    value={manualAdjustment.reasonCode}
+                    onChange={(event) =>
+                      setManualAdjustment((current) => ({
+                        ...current,
+                        reasonCode: event.target.value,
+                      }))
+                    }
+                    placeholder="support_bonus / correction / promo_credit"
+                  />
+                </label>
+                <label className="field">
+                  <span>Note</span>
+                  <input
+                    value={manualAdjustment.note}
+                    onChange={(event) =>
+                      setManualAdjustment((current) => ({ ...current, note: event.target.value }))
+                    }
+                    placeholder="Optional note"
+                  />
+                </label>
+                <button
+                  className="primary"
+                  onClick={() => void submitManualAdjustment()}
+                  disabled={loading || !manualAdjustment.reasonCode.trim()}
+                >
+                  Post manual adjustment
+                </button>
+              </section>
+            </section>
+          ) : (
             <section className="panel">
-              <h3>User search</h3>
+              <h3>Users</h3>
               <div className="toolbar-inline">
                 <input
                   value={userQuery}
                   onChange={(event) => setUserQuery(event.target.value)}
-                  placeholder="Search by email, username, or external user id"
+                  placeholder="Search user"
                 />
+                <label className="field" style={{ minWidth: 220 }}>
+                  <span>From tenant</span>
+                  <select
+                    value={userTenantFilterId}
+                    onChange={(event) => setUserTenantFilterId(event.target.value)}
+                  >
+                    <option value="all">All</option>
+                    {tenants.map((tenant) => (
+                      <option key={tenant.id} value={tenant.id}>
+                        {tenant.name} ({tenant.slug})
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <button
                   className="secondary"
                   onClick={() => void handleUserSearch()}
-                  disabled={!selectedTenantId || loading}
+                  disabled={loading}
                 >
                   Search
                 </button>
@@ -802,129 +1347,23 @@ export default function App() {
                 {users.map((user) => (
                   <li key={user.id}>
                     <button
-                      className={
-                        user.id === selectedUser?.id ? 'tenant-button active' : 'tenant-button'
-                      }
+                      className="tenant-button"
                       onClick={() => void selectUserAndLoad(user.id)}
                     >
-                      <span>{user.email || user.external_user_id}</span>
+                      <span>{user.username || user.email || user.external_user_id}</span>
                       <small>
-                        {user.username || 'no username'} · {user.external_user_id}
+                        {user.tenant_name
+                          ? `${user.tenant_name} (${user.tenant_slug})`
+                          : user.tenant_id}
+                        {' · '}
+                        {user.tenant_status === 'active' ? 'active' : 'inactive'}
                       </small>
                     </button>
                   </li>
                 ))}
               </ul>
             </section>
-
-            <section className="panel">
-              <h3>User detail</h3>
-              {userDetail ? (
-                <>
-                  <dl className="detail-list">
-                    <div>
-                      <dt>Email</dt>
-                      <dd>{userDetail.tenant_user.email || '—'}</dd>
-                    </div>
-                    <div>
-                      <dt>External user id</dt>
-                      <dd>{userDetail.tenant_user.external_user_id}</dd>
-                    </div>
-                    <div>
-                      <dt>Username</dt>
-                      <dd>{userDetail.tenant_user.username || '—'}</dd>
-                    </div>
-                    <div>
-                      <dt>Status</dt>
-                      <dd>{userDetail.tenant_user.tenant_status}</dd>
-                    </div>
-                    <div>
-                      <dt>Entity type</dt>
-                      <dd>{userDetail.tenant_user.entity_type || 'person'}</dd>
-                    </div>
-                    <div>
-                      <dt>Joined</dt>
-                      <dd>{formatDate(userDetail.tenant_user.joined_at)}</dd>
-                    </div>
-                    <div>
-                      <dt>Source tenant</dt>
-                      <dd>
-                        {userDetail.source_tenant
-                          ? `${userDetail.source_tenant.name} (${userDetail.source_tenant.slug})`
-                          : userDetail.tenant_user.source_tenant_id || '—'}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Source user</dt>
-                      <dd>
-                        {userDetail.source_user
-                          ? `${userDetail.source_user.username || userDetail.source_user.email || userDetail.source_user.external_user_id} (${userDetail.source_user.entity_type})`
-                          : userDetail.tenant_user.source_tenant_user_id || '—'}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Wallet</dt>
-                      <dd>
-                        {userDetail.balance
-                          ? `${userDetail.balance.display_balance_minor} ${userDetail.balance.currency}`
-                          : 'No balance yet'}
-                      </dd>
-                    </div>
-                  </dl>
-                  <h4>Services / memberships</h4>
-                  {userDetail.memberships.length ? (
-                    <ul className="data-list">
-                      {userDetail.memberships.map((membership) => (
-                        <li key={membership.id}>
-                          <strong>
-                            {membership.tenant?.name || membership.tenant_id}
-                            {membership.tenant?.slug ? ` (${membership.tenant.slug})` : ''}
-                          </strong>
-                          <br />
-                          <span className="muted">
-                            {membership.external_user_id}
-                            {' · '}
-                            {membership.entity_type}
-                            {' · '}
-                            {membership.tenant_status}
-                            {' · joined '}
-                            {formatDate(membership.joined_at)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="muted">No service memberships recorded for this user.</p>
-                  )}
-                  <h4>Effective referral chain</h4>
-                  {userDetail.effective_referral_chain.length ? (
-                    <ul className="data-list">
-                      {userDetail.effective_referral_chain.map((row) => (
-                        <li
-                          key={`${row.ancestor_tenant_user_id}-${row.descendant_tenant_user_id}-${row.depth}`}
-                        >
-                          depth {row.depth}: {row.ancestor_tenant_user_id}
-                          {row.ancestor_tenant_id ? ` @ ${row.ancestor_tenant_id}` : ''}
-                          {' · '}
-                          {row.relation_type}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="muted">No effective referral chain rows for this user.</p>
-                  )}
-                  <h4>Promoter history</h4>
-                  <p className="muted">
-                    Promoter status now exists in UPRM; user-level history panel polish is still
-                    pending.
-                  </p>
-                </>
-              ) : (
-                <p className="muted">Select a user to inspect details.</p>
-              )}
-            </section>
-          </section>
-        )}
+          ))}
 
         {view === 'wallets' && (
           <section className="panel-grid panel-grid-wide">
@@ -1007,126 +1446,27 @@ export default function App() {
           </section>
         )}
 
-        {view === 'reports' && (
-          <section className="panel-grid panel-grid-wide">
+        {view === 'tenants' &&
+          (tenantDetailOpen && selectedTenant ? (
+            renderTenantManagementPanels(true)
+          ) : (
             <section className="panel">
-              <div className="toolbar-inline">
-                <label className="field">
-                  <span>Range (days)</span>
-                  <select
-                    value={reportDays}
-                    onChange={(event) => setReportDays(Number(event.target.value))}
-                  >
-                    <option value={30}>30</option>
-                    <option value={60}>60</option>
-                    <option value={90}>90</option>
-                  </select>
-                </label>
-                <button
-                  className="secondary"
-                  onClick={() =>
-                    token &&
-                    selectedTenantId &&
-                    void loadReports(token, selectedTenantId, reportDays)
-                  }
-                  disabled={!token || !selectedTenantId || loading}
-                >
-                  Reload reports
-                </button>
-              </div>
-              {reports ? (
-                <>
-                  <div className="detail-list">
-                    <div>
-                      <dt>Tenant</dt>
-                      <dd>{reports.tenant_id}</dd>
-                    </div>
-                    <div>
-                      <dt>Range</dt>
-                      <dd>{reports.range_days} days</dd>
-                    </div>
-                    <div>
-                      <dt>Total conversion events</dt>
-                      <dd>
-                        {reports.conversion_daily.reduce((sum, row) => sum + row.event_count, 0)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Current liability</dt>
-                      <dd>
-                        {lastItem(reports.tenant_liability_daily)?.display_liability_minor ?? '0'}{' '}
-                        {lastItem(reports.tenant_liability_daily)?.currency ??
-                          selectedTenant?.baseCurrency ??
-                          'EUR'}
-                      </dd>
-                    </div>
-                  </div>
-
-                  <h3>Conversions</h3>
-                  <ChartBox>
-                    <ResponsiveContainer width="100%" height={260}>
-                      <LineChart data={buildConversionChartData(reports)}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="day" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Line type="monotone" dataKey="invoice_paid" stroke="#2563eb" />
-                        <Line type="monotone" dataKey="purchase_completed" stroke="#16a34a" />
-                        <Line type="monotone" dataKey="user_registered" stroke="#9333ea" />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </ChartBox>
-
-                  <h3>Reward performance</h3>
-                  <ChartBox>
-                    <ResponsiveContainer width="100%" height={260}>
-                      <BarChart data={buildRewardChartData(reports)}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="day" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="rewardExpenseMinor" fill="#f59e0b" />
-                        <Bar dataKey="postedScheduledCount" fill="#0f766e" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </ChartBox>
-
-                  <h3>Tenant liability</h3>
-                  <ChartBox>
-                    <ResponsiveContainer width="100%" height={260}>
-                      <LineChart data={buildLiabilityChartData(reports)}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="day" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Line type="monotone" dataKey="displayLiabilityMinor" stroke="#dc2626" />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </ChartBox>
-
-                  <h3>Cohort retention</h3>
-                  <ChartBox>
-                    <ResponsiveContainer width="100%" height={260}>
-                      <BarChart data={buildRetentionChartData(reports)}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="cohort" />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="retentionRatePercent" fill="#7c3aed" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </ChartBox>
-                </>
-              ) : (
-                <p className="muted">No reporting data loaded yet.</p>
-              )}
+              <h3>Tenants</h3>
+              <p className="muted">Select a tenant to open its details and configuration.</p>
+              <ul className="tenant-list">
+                {tenants.map((tenant) => (
+                  <li key={tenant.id}>
+                    <button className="tenant-button" onClick={() => openTenantDetail(tenant.id)}>
+                      <span>{tenant.name}</span>
+                      <small>
+                        {tenant.baseCurrency} · {tenant.status === 'active' ? 'active' : 'inactive'}
+                      </small>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </section>
-          </section>
-        )}
+          ))}
 
         {view === 'webhooks' && (
           <section className="panel">
@@ -1176,113 +1516,81 @@ export default function App() {
           </section>
         )}
 
-        {view === 'promoters' && (
-          <section className="panel-grid panel-grid-wide">
-            <section className="panel">
-              <h3>Promoter applications</h3>
-              <p className="muted">
-                Showing{' '}
-                {selectedTenant ? `${selectedTenant.name} (${selectedTenant.slug})` : 'all tenants'}{' '}
-                promoter applications.
-              </p>
-              {visiblePromoterApplications.length ? (
-                <div className="table-wrap">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Submitted</th>
-                        <th>Tenant user</th>
-                        <th>Status</th>
-                        <th>Links</th>
-                        <th>Reviewed</th>
-                        <th>Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {visiblePromoterApplications.map((row) => (
-                        <tr
-                          key={row.id}
-                          className={
-                            row.id === selectedVisiblePromoterApplication?.id
-                              ? 'interactive-row selected'
-                              : 'interactive-row'
-                          }
-                          onClick={() => setSelectedPromoterApplicationId(row.id)}
-                        >
-                          <td>{row.submitted_at ? formatDate(row.submitted_at) : '—'}</td>
-                          <td>{row.tenant_user_id}</td>
-                          <td>{row.status}</td>
-                          <td>{row.links.length}</td>
-                          <td>{row.reviewed_at ? formatDate(row.reviewed_at) : '—'}</td>
-                          <td>{row.notes || '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="muted">
-                  No promoter applications recorded for the selected tenant yet.
-                </p>
-              )}
-            </section>
-            <section className="panel">
-              <h3>Application detail</h3>
-              {selectedVisiblePromoterApplication ? (
-                <>
-                  <dl className="detail-list">
-                    <div>
-                      <dt>ID</dt>
-                      <dd>{selectedVisiblePromoterApplication.id}</dd>
-                    </div>
-                    <div>
-                      <dt>Tenant ID</dt>
-                      <dd>{selectedVisiblePromoterApplication.tenant_id}</dd>
-                    </div>
-                    <div>
-                      <dt>Tenant user ID</dt>
-                      <dd>{selectedVisiblePromoterApplication.tenant_user_id}</dd>
-                    </div>
-                    <div>
-                      <dt>Submitted at</dt>
-                      <dd>
-                        {selectedVisiblePromoterApplication.submitted_at
-                          ? formatDate(selectedVisiblePromoterApplication.submitted_at)
-                          : '—'}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Status</dt>
-                      <dd>{selectedVisiblePromoterApplication.status}</dd>
-                    </div>
-                    <div>
-                      <dt>Reviewed at</dt>
-                      <dd>
-                        {selectedVisiblePromoterApplication.reviewed_at
-                          ? formatDate(selectedVisiblePromoterApplication.reviewed_at)
-                          : '—'}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Reviewed by admin ID</dt>
-                      <dd>{selectedVisiblePromoterApplication.reviewed_by_admin_id || '—'}</dd>
-                    </div>
-                  </dl>
+        {view === 'promoters' &&
+          (promoterDetailOpen && selectedVisiblePromoterApplication ? (
+            <section className="panel-grid panel-grid-wide">
+              <section className="panel">
+                <div className="panel-inline tenant-detail-header">
                   <div>
-                    <div className="field-label">Notes</div>
-                    <pre>{selectedVisiblePromoterApplication.notes || '—'}</pre>
+                    <h3>Promoter detail</h3>
+                    <p className="muted">
+                      {selectedVisiblePromoterApplication.user_label} ·{' '}
+                      {selectedVisiblePromoterApplication.tenant_label}
+                    </p>
                   </div>
-                  <label className="field">
-                    <span>Reviewer note</span>
-                    <textarea
-                      value={promoterReviewNote}
-                      rows={3}
-                      onChange={(event) => setPromoterReviewNote(event.target.value)}
-                      placeholder="Optional note for approve/reject actions"
-                    />
-                  </label>
-                  {(selectedVisiblePromoterApplication.status === 'submitted' ||
-                    selectedVisiblePromoterApplication.status === 'under_review') && (
+                  <button className="secondary" onClick={() => setPromoterDetailOpen(false)}>
+                    Close
+                  </button>
+                </div>
+                <dl className="detail-list">
+                  <div>
+                    <dt>Application</dt>
+                    <dd>{selectedVisiblePromoterApplication.id}</dd>
+                  </div>
+                  <div>
+                    <dt>Tenant user</dt>
+                    <dd>{selectedVisiblePromoterApplication.tenant_user_id}</dd>
+                  </div>
+                  <div>
+                    <dt>Application status</dt>
+                    <dd>{selectedVisiblePromoterApplication.status}</dd>
+                  </div>
+                  <div>
+                    <dt>Promoter type</dt>
+                    <dd>{selectedVisiblePromoterApplication.promoter_status}</dd>
+                  </div>
+                  <div>
+                    <dt>Paid referrals</dt>
+                    <dd>{selectedPromoterPerformanceSummary.paid_referrals}</dd>
+                  </div>
+                  <div>
+                    <dt>Rewards generated</dt>
+                    <dd>{selectedPromoterPerformanceSummary.reward_total_minor}</dd>
+                  </div>
+                  <div>
+                    <dt>Revenue referred</dt>
+                    <dd>{selectedPromoterPerformanceSummary.gross_revenue_minor}</dd>
+                  </div>
+                  <div>
+                    <dt>Refund count</dt>
+                    <dd>{selectedPromoterPerformanceSummary.refund_count}</dd>
+                  </div>
+                </dl>
+
+                <label className="field">
+                  <span>Reviewer note</span>
+                  <textarea
+                    value={promoterReviewNote}
+                    rows={3}
+                    onChange={(event) => setPromoterReviewNote(event.target.value)}
+                    placeholder="Optional note for approve/reject actions"
+                  />
+                </label>
+                {(selectedVisiblePromoterApplication.status === 'submitted' ||
+                  selectedVisiblePromoterApplication.status === 'under_review') && (
+                  <>
+                    <label className="field">
+                      <span>Promoter type on approval</span>
+                      <select
+                        value={promoterReviewStatus}
+                        onChange={(event) => setPromoterReviewStatus(event.target.value)}
+                      >
+                        <option value="promoter">promoter</option>
+                        <option value="affiliate">affiliate</option>
+                        <option value="creator">creator</option>
+                        <option value="partner">partner</option>
+                      </select>
+                    </label>
                     <div className="toolbar-inline">
                       <button
                         className="primary"
@@ -1306,38 +1614,280 @@ export default function App() {
                         Reject
                       </button>
                     </div>
+                  </>
+                )}
+
+                <div>
+                  <div className="field-label">Notes</div>
+                  <pre>{selectedVisiblePromoterApplication.notes || '—'}</pre>
+                </div>
+                <div>
+                  <div className="field-label">Links</div>
+                  {selectedVisiblePromoterApplication.links.length ? (
+                    <ul className="data-list">
+                      {selectedVisiblePromoterApplication.links.map((link) => (
+                        <li key={link.id}>
+                          <strong>{link.link_type}</strong> · {link.verification_status}
+                          <br />
+                          <a href={link.url} target="_blank" rel="noreferrer">
+                            {link.url}
+                          </a>
+                          {link.proof_json ? (
+                            <>
+                              <div className="field-label proof-json-label">Proof JSON</div>
+                              <pre>{prettyJson(link.proof_json)}</pre>
+                            </>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted">No application links provided.</p>
                   )}
-                  <div>
-                    <div className="field-label">Links</div>
-                    {selectedVisiblePromoterApplication.links.length ? (
-                      <ul className="data-list">
-                        {selectedVisiblePromoterApplication.links.map((link) => (
-                          <li key={link.id}>
-                            <strong>{link.link_type}</strong> · {link.verification_status}
-                            <br />
-                            <a href={link.url} target="_blank" rel="noreferrer">
-                              {link.url}
-                            </a>
-                            {link.proof_json ? (
-                              <>
-                                <div className="field-label proof-json-label">Proof JSON</div>
-                                <pre>{prettyJson(link.proof_json)}</pre>
-                              </>
-                            ) : null}
-                          </li>
+                </div>
+              </section>
+
+              <section className="panel">
+                <div className="toolbar-inline promoter-toolbar-wrap">
+                  <label className="field">
+                    <span>Performance window</span>
+                    <select
+                      value={promoterPerformanceDays}
+                      onChange={(event) => setPromoterPerformanceDays(Number(event.target.value))}
+                    >
+                      <option value={7}>7 days</option>
+                      <option value={30}>30 days</option>
+                      <option value={90}>90 days</option>
+                    </select>
+                  </label>
+                </div>
+                <h3>Reward performance</h3>
+                {promoterPerformance?.metrics_daily.length ? (
+                  <ChartBox>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <BarChart
+                        data={promoterPerformance.metrics_daily.map((row) => ({
+                          day: formatShortDate(row.date),
+                          paidReferrals: row.new_paid_referrals_count,
+                          rewardTotal: Number(row.net_reward_generated),
+                          grossRevenue: Number(row.gross_revenue_referred),
+                        }))}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="day" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="paidReferrals" fill="#2563eb" />
+                        <Bar dataKey="rewardTotal" fill="#f59e0b" />
+                        <Bar dataKey="grossRevenue" fill="#16a34a" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartBox>
+                ) : (
+                  <p className="muted">No promoter performance recorded for this window yet.</p>
+                )}
+
+                <h3>Daily performance rows</h3>
+                {promoterPerformance?.metrics_daily.length ? (
+                  <div className="table-wrap">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Day</th>
+                          <th>Paid referrals</th>
+                          <th>Revenue referred</th>
+                          <th>Reward generated</th>
+                          <th>Refunds</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {promoterPerformance.metrics_daily.map((row) => (
+                          <tr key={row.date}>
+                            <td>{formatDate(row.date)}</td>
+                            <td>{row.new_paid_referrals_count}</td>
+                            <td>{row.gross_revenue_referred}</td>
+                            <td>{row.net_reward_generated}</td>
+                            <td>{row.refund_count}</td>
+                          </tr>
                         ))}
-                      </ul>
-                    ) : (
-                      <p className="muted">No application links provided.</p>
-                    )}
+                      </tbody>
+                    </table>
                   </div>
-                </>
-              ) : (
-                <p className="muted">Select a promoter application to inspect it.</p>
-              )}
+                ) : null}
+              </section>
             </section>
-          </section>
-        )}
+          ) : (
+            <section className="panel-grid panel-grid-wide">
+              <section className="panel">
+                <div className="panel-inline tenant-detail-header">
+                  <div>
+                    <h3>Promoters</h3>
+                    <p className="muted">
+                      List-first promoter browser with manual add and performance ranking.
+                    </p>
+                  </div>
+                </div>
+                <div className="toolbar-inline promoter-toolbar-wrap">
+                  <label className="field">
+                    <span>Application status</span>
+                    <select
+                      value={promoterListStatusFilter}
+                      onChange={(event) => setPromoterListStatusFilter(event.target.value)}
+                    >
+                      <option value="">All</option>
+                      <option value="submitted">Submitted</option>
+                      <option value="under_review">Under review</option>
+                      <option value="approved">Approved</option>
+                      <option value="rejected">Rejected</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>Rank by</span>
+                    <select
+                      value={promoterRankBy}
+                      onChange={(event) =>
+                        setPromoterRankBy(
+                          event.target.value as 'activity_time' | 'reward_performance',
+                        )
+                      }
+                    >
+                      <option value="activity_time">Activity time</option>
+                      <option value="reward_performance">Reward performance</option>
+                    </select>
+                  </label>
+                </div>
+
+                {visiblePromoterApplications.length ? (
+                  <div className="table-wrap">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Submitted</th>
+                          <th>User</th>
+                          <th>Tenant</th>
+                          <th>App status</th>
+                          <th>Promoter type</th>
+                          <th>Paid referrals</th>
+                          <th>Rewards</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visiblePromoterApplications.map((row) => (
+                          <tr
+                            key={row.id}
+                            className={
+                              row.id === selectedVisiblePromoterApplication?.id
+                                ? 'interactive-row selected'
+                                : 'interactive-row'
+                            }
+                            onClick={() => {
+                              setSelectedPromoterApplicationId(row.id);
+                              setPromoterDetailOpen(true);
+                            }}
+                          >
+                            <td>{row.submitted_at ? formatDate(row.submitted_at) : '—'}</td>
+                            <td>{row.user_label}</td>
+                            <td>{row.tenant_label}</td>
+                            <td>{row.status}</td>
+                            <td>{row.promoter_status}</td>
+                            <td>{row.paid_referrals}</td>
+                            <td>{row.reward_total_minor}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="muted">No promoter applications found for the current filter.</p>
+                )}
+              </section>
+
+              <section className="panel">
+                <h3>Add promoter</h3>
+                <label className="field">
+                  <span>Tenant</span>
+                  <select
+                    value={manualPromoterForm.tenantId}
+                    onChange={(event) =>
+                      setManualPromoterForm((current) => ({
+                        ...current,
+                        tenantId: event.target.value,
+                        tenantUserId: '',
+                      }))
+                    }
+                  >
+                    <option value="">Select tenant</option>
+                    {tenants.map((tenant) => (
+                      <option key={tenant.id} value={tenant.id}>
+                        {tenant.name} ({tenant.slug})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>User</span>
+                  <select
+                    value={manualPromoterForm.tenantUserId}
+                    onChange={(event) =>
+                      setManualPromoterForm((current) => ({
+                        ...current,
+                        tenantUserId: event.target.value,
+                      }))
+                    }
+                    disabled={!manualPromoterForm.tenantId}
+                  >
+                    <option value="">Select tenant user</option>
+                    {manualPromoterTenantUsers.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.username || user.email || user.external_user_id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Promoter type</span>
+                  <select
+                    value={manualPromoterForm.promoterStatus}
+                    onChange={(event) =>
+                      setManualPromoterForm((current) => ({
+                        ...current,
+                        promoterStatus: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="promoter">promoter</option>
+                    <option value="affiliate">affiliate</option>
+                    <option value="creator">creator</option>
+                    <option value="partner">partner</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Note</span>
+                  <textarea
+                    value={manualPromoterForm.note}
+                    rows={3}
+                    onChange={(event) =>
+                      setManualPromoterForm((current) => ({
+                        ...current,
+                        note: event.target.value,
+                      }))
+                    }
+                    placeholder="Optional approval note"
+                  />
+                </label>
+                <button
+                  className="primary"
+                  onClick={() => void submitManualPromoter()}
+                  disabled={
+                    loading || !manualPromoterForm.tenantId || !manualPromoterForm.tenantUserId
+                  }
+                >
+                  Add promoter
+                </button>
+              </section>
+            </section>
+          ))}
         {view === 'fraud' && (
           <section className="panel-grid panel-grid-wide">
             <section className="panel">
@@ -1656,6 +2206,92 @@ function ChartBox({ children }: { children: ReactNode }) {
   return <div style={{ width: '100%', height: 260 }}>{children}</div>;
 }
 
+function aggregateReportsOverview(reportsList: ReportsOverview[], days: number): ReportsOverview {
+  const conversionDaily = aggregateRows(
+    reportsList.flatMap((report) => report.conversion_daily),
+    (row) => `${row.day}|${row.event_type}`,
+    (row) => ({ ...row }),
+    (acc, row) => {
+      acc.event_count += row.event_count;
+      acc.distinct_external_users += row.distinct_external_users;
+      acc.distinct_tenant_users += row.distinct_tenant_users;
+    },
+  );
+
+  const rewardPerformanceDaily = aggregateRows(
+    reportsList.flatMap((report) => report.reward_performance_daily),
+    (row) => `${row.day}|${row.currency}`,
+    (row) => ({ ...row }),
+    (acc, row) => {
+      acc.reward_entry_count += row.reward_entry_count;
+      acc.reward_expense_minor = String(
+        Number(acc.reward_expense_minor) + Number(row.reward_expense_minor),
+      );
+      acc.distinct_beneficiary_users += row.distinct_beneficiary_users;
+      acc.posted_scheduled_count += row.posted_scheduled_count;
+    },
+  );
+
+  const tenantLiabilityDaily = aggregateRows(
+    reportsList.flatMap((report) => report.tenant_liability_daily),
+    (row) => `${row.day}|${row.currency}`,
+    (row) => ({ ...row }),
+    (acc, row) => {
+      acc.raw_liability_minor = String(
+        Number(acc.raw_liability_minor) + Number(row.raw_liability_minor),
+      );
+      acc.display_liability_minor = String(
+        Number(acc.display_liability_minor) + Number(row.display_liability_minor),
+      );
+      acc.account_count += row.account_count;
+    },
+  );
+
+  const cohortRetentionDaily = aggregateRows(
+    reportsList.flatMap((report) => report.cohort_retention_daily),
+    (row) => `${row.cohort_day}|${row.activity_day}`,
+    (row) => ({ ...row }),
+    (acc, row) => {
+      acc.cohort_size += row.cohort_size;
+      acc.retained_users += row.retained_users;
+    },
+  );
+
+  return {
+    tenant_id: 'all',
+    range_days: days,
+    conversion_daily: conversionDaily,
+    reward_performance_daily: rewardPerformanceDaily,
+    tenant_liability_daily: tenantLiabilityDaily,
+    cohort_retention_daily: cohortRetentionDaily,
+  };
+}
+
+function aggregateRows<T>(
+  rows: T[],
+  getKey: (row: T) => string,
+  clone: (row: T) => T,
+  merge: (accumulator: T, row: T) => void,
+): T[] {
+  const buckets = new Map<string, T>();
+  for (const row of rows) {
+    const key = getKey(row);
+    const existing = buckets.get(key);
+    if (!existing) {
+      buckets.set(key, clone(row));
+      continue;
+    }
+    merge(existing, row);
+  }
+  return [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([, value]) => value);
+}
+
+function formatLiabilitySummary(displayMinor?: string, currency?: string) {
+  const credits = displayMinor ?? '0';
+  const moneyCurrency = currency ?? 'EUR';
+  return `${credits} credits (${credits} ${moneyCurrency})`;
+}
+
 function buildConversionChartData(reports: ReportsOverview) {
   const byDay = new Map<string, Record<string, number | string>>();
   for (const row of reports.conversion_daily) {
@@ -1722,4 +2358,8 @@ function prettyJson(value: unknown) {
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString();
+}
+
+function formatShortDate(value: string) {
+  return shortDay(value);
 }

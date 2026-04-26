@@ -7,16 +7,37 @@ describe('PromoterApplicationsController admin review', () => {
     controller = new PromoterApplicationsController();
   });
 
-  it('lists promoter applications', async () => {
+  it('lists promoter applications with current promoter status metadata', async () => {
     (controller as any).svc = {
       listApplications: jest.fn().mockResolvedValue([
-        { id: 'app-1', tenantId: 'tenant-1', tenantUserId: 'tu-1', status: 'submitted', links: [] },
+        {
+          id: 'app-1',
+          tenantId: 'tenant-1',
+          tenantUserId: 'tu-1',
+          status: 'submitted',
+          links: [],
+        },
       ]),
+      getPromoterStatus: jest.fn().mockResolvedValue({
+        promoterStatus: 'pending_review',
+        qualificationSource: 'manual',
+        manualOverride: false,
+      }),
     };
 
     const result = await (controller as any).list();
+    expect((controller as any).svc.getPromoterStatus).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      tenantUserId: 'tu-1',
+    });
     expect(result).toEqual([
-      expect.objectContaining({ id: 'app-1', status: 'submitted' }),
+      expect.objectContaining({
+        id: 'app-1',
+        status: 'submitted',
+        promoter_status: 'pending_review',
+        qualification_source: 'manual',
+        manual_override: false,
+      }),
     ]);
   });
 
@@ -32,7 +53,7 @@ describe('PromoterApplicationsController admin review', () => {
         },
         profile: {
           id: 'profile-1',
-          promoterStatus: 'promoter',
+          promoterStatus: 'affiliate',
           qualificationSource: 'manual',
           manualOverride: true,
           effectiveFrom: new Date('2026-04-25T00:00:00.000Z'),
@@ -57,15 +78,81 @@ describe('PromoterApplicationsController admin review', () => {
       headers: {},
     };
 
-    const result = await (controller as any).approve('app-1', { note: 'looks good' }, req);
+    const result = await (controller as any).approve(
+      'app-1',
+      { note: 'looks good', promoterStatus: 'affiliate' },
+      req,
+    );
 
     expect((controller as any).svc.approveApplication).toHaveBeenCalledWith({
       applicationId: 'app-1',
       adminUserId: 'admin-1',
       note: 'looks good',
+      promoterStatus: 'affiliate',
     });
     expect((controller as any).audit.write).toHaveBeenCalled();
-    expect(result).toEqual(expect.objectContaining({ id: 'app-1', status: 'approved' }));
+    expect(result).toEqual(
+      expect.objectContaining({ id: 'app-1', status: 'approved' }),
+    );
+  });
+
+  it('creates a promoter manually with a selected promoter type', async () => {
+    (controller as any).svc = {
+      manualActivatePromoter: jest.fn().mockResolvedValue({
+        application: {
+          id: 'app-manual-1',
+          tenantId: 'tenant-psi',
+          tenantUserId: 'tu-9',
+          status: 'approved',
+          notes: 'manual add',
+          links: [],
+        },
+        profile: {
+          id: 'profile-manual-1',
+          promoterStatus: 'creator',
+        },
+      }),
+    };
+    (controller as any).audit = {
+      write: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const req = {
+      admin: {
+        adminUserId: 'admin-1',
+        subject: 'local:admin',
+        email: 'admin@example.com',
+        displayName: 'Admin',
+        roles: ['super_admin'],
+      },
+      method: 'POST',
+      route: { path: '/admin/promoter-applications/manual-create' },
+      headers: {},
+    };
+
+    const result = await (controller as any).manualCreate(
+      {
+        tenantId: 'tenant-psi',
+        tenantUserId: 'tu-9',
+        promoterStatus: 'creator',
+        note: 'manual add',
+      },
+      req,
+    );
+
+    expect((controller as any).svc.manualActivatePromoter).toHaveBeenCalledWith(
+      {
+        tenantId: 'tenant-psi',
+        tenantUserId: 'tu-9',
+        adminUserId: 'admin-1',
+        promoterStatus: 'creator',
+        note: 'manual add',
+      },
+    );
+    expect(result).toEqual(
+      expect.objectContaining({ id: 'app-manual-1', status: 'approved' }),
+    );
+    expect((controller as any).audit.write).toHaveBeenCalled();
   });
 
   it('rejects an application and writes an audit row', async () => {
@@ -95,7 +182,11 @@ describe('PromoterApplicationsController admin review', () => {
       headers: {},
     };
 
-    const result = await (controller as any).reject('app-2', { note: 'not enough proof' }, req);
+    const result = await (controller as any).reject(
+      'app-2',
+      { note: 'not enough proof' },
+      req,
+    );
 
     expect((controller as any).svc.rejectApplication).toHaveBeenCalledWith({
       applicationId: 'app-2',
@@ -103,6 +194,8 @@ describe('PromoterApplicationsController admin review', () => {
       note: 'not enough proof',
     });
     expect((controller as any).audit.write).toHaveBeenCalled();
-    expect(result).toEqual(expect.objectContaining({ id: 'app-2', status: 'rejected' }));
+    expect(result).toEqual(
+      expect.objectContaining({ id: 'app-2', status: 'rejected' }),
+    );
   });
 });

@@ -116,6 +116,9 @@ export interface PromoterApplicationRow {
   tenant_id: string;
   tenant_user_id: string;
   status: string;
+  promoter_status: string;
+  qualification_source: string | null;
+  manual_override: boolean;
   notes: string | null;
   submitted_at: string | null;
   reviewed_by_admin_id: string | null;
@@ -126,6 +129,19 @@ export interface PromoterApplicationRow {
     url: string;
     verification_status: string;
     proof_json: Record<string, unknown> | null;
+  }>;
+}
+
+export interface PromoterPerformance {
+  tenant_id: string;
+  tenant_user_id: string;
+  days: number;
+  metrics_daily: Array<{
+    date: string;
+    new_paid_referrals_count: number;
+    gross_revenue_referred: string;
+    net_reward_generated: string;
+    refund_count: number;
   }>;
 }
 
@@ -353,11 +369,37 @@ export async function reviewPromoterApplication(
   id: string,
   action: 'approve' | 'reject',
   note?: string,
+  promoterStatus?: string,
 ) {
   return request(`/admin/promoter-applications/${id}/${action}`, {
     method: 'POST',
     headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
-    body: JSON.stringify(note ? { note } : {}),
+    body: JSON.stringify({
+      ...(note ? { note } : {}),
+      ...(promoterStatus ? { promoterStatus } : {}),
+    }),
+  });
+}
+
+export async function manualCreatePromoter(
+  token: string,
+  payload: { tenantId: string; tenantUserId: string; promoterStatus: string; note: string },
+) {
+  return request('/admin/promoter-applications/manual-create', {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchPromoterPerformance(
+  token: string,
+  id: string,
+  days = 30,
+): Promise<PromoterPerformance> {
+  const params = new URLSearchParams({ days: String(days) });
+  return request(`/admin/promoter-applications/${id}/performance?${params.toString()}`, {
+    headers: authHeaders(token),
   });
 }
 

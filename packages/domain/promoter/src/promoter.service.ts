@@ -25,6 +25,15 @@ export interface ReviewPromoterApplicationInput {
   applicationId: string;
   adminUserId: string;
   note?: string;
+  promoterStatus?: string;
+}
+
+export interface ManualActivatePromoterInput {
+  tenantId: string;
+  tenantUserId: string;
+  adminUserId: string;
+  promoterStatus: string;
+  note?: string;
 }
 
 export interface GetPromoterStatusInput {
@@ -118,6 +127,7 @@ export class PromoterService {
 
   async approveApplication(input: ReviewPromoterApplicationInput): Promise<any> {
     const application = await this.requireSubmittedApplication(input.applicationId);
+    const promoterStatus = normalizePromoterStatus(input.promoterStatus);
 
     return this.db.$transaction(async (tx: any) => {
       await tx.promoterProfile.updateMany({
@@ -146,7 +156,7 @@ export class PromoterService {
         data: {
           tenantId: application.tenantId,
           tenantUserId: application.tenantUserId,
-          promoterStatus: 'promoter',
+          promoterStatus,
           qualificationSource: 'manual',
           manualOverride: true,
           effectiveFrom: reviewedAt,
@@ -155,6 +165,56 @@ export class PromoterService {
       });
 
       return { application: updatedApplication, profile };
+    });
+  }
+
+  async manualActivatePromoter(input: ManualActivatePromoterInput): Promise<any> {
+    const tenantUser = await this.db.tenantUser.findFirst({
+      where: { id: input.tenantUserId, tenantId: input.tenantId },
+    });
+    if (!tenantUser) {
+      throw new PromoterError('tenant user not found', 'TENANT_USER_NOT_FOUND');
+    }
+
+    const promoterStatus = normalizePromoterStatus(input.promoterStatus);
+
+    return this.db.$transaction(async (tx: any) => {
+      await tx.promoterProfile.updateMany({
+        where: {
+          tenantId: input.tenantId,
+          tenantUserId: input.tenantUserId,
+          effectiveTo: null,
+        },
+        data: {
+          effectiveTo: new Date(),
+        },
+      });
+
+      const reviewedAt = new Date();
+      const application = await tx.promoterApplication.create({
+        data: {
+          tenantId: input.tenantId,
+          tenantUserId: input.tenantUserId,
+          status: 'approved',
+          reviewedByAdminId: input.adminUserId,
+          reviewedAt,
+          notes: input.note ?? null,
+        },
+      });
+
+      const profile = await tx.promoterProfile.create({
+        data: {
+          tenantId: input.tenantId,
+          tenantUserId: input.tenantUserId,
+          promoterStatus,
+          qualificationSource: 'manual',
+          manualOverride: true,
+          effectiveFrom: reviewedAt,
+          effectiveTo: null,
+        },
+      });
+
+      return { application, profile };
     });
   }
 
@@ -394,6 +454,11 @@ function endOfDay(date: Date): Date {
   return new Date(startOfDay(date).getTime() + 86_400_000);
 }
 
+function normalizePromoterStatus(value: string | undefined): string {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : 'promoter';
+}
+
 function parsePromoterConfig(raw: any): {
   autoPromoterRule?: {
     requiredPaidReferrals: number;
@@ -409,7 +474,8 @@ function parsePromoterConfig(raw: any): {
   const retentionRules = Array.isArray(raw.retentionRules)
     ? raw.retentionRules
         .filter(
-          (rule: any) => Number.isFinite(rule?.windowDays) && Number.isFinite(rule?.minimumPaidReferrals),
+          (rule: any) =>
+            Number.isFinite(rule?.windowDays) && Number.isFinite(rule?.minimumPaidReferrals),
         )
         .map((rule: any) => ({
           windowDays: Number(rule.windowDays),

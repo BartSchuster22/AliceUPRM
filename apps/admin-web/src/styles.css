@@ -221,6 +221,11 @@ input {
   align-items: center;
 }
 
+.promoter-toolbar-wrap {
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
 .data-list {
   list-style: none;
   padding: 0;
@@ -366,6 +371,10 @@ pre {
 }
 
 .reward-tier-toolbar {
+  align-items: flex-start;
+}
+
+.tenant-detail-header {
   align-items: flex-start;
 }
 

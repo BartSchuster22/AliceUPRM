@@ -111,7 +111,7 @@ describe('PromoterService', () => {
       id: 'profile-new',
       tenantId: 'tenant-1',
       tenantUserId: 'tu-1',
-      promoterStatus: 'promoter',
+      promoterStatus: 'affiliate',
       qualificationSource: 'manual',
       manualOverride: true,
       effectiveFrom: new Date('2026-04-25T00:00:00.000Z'),
@@ -122,6 +122,7 @@ describe('PromoterService', () => {
       applicationId: 'app-1',
       adminUserId: 'admin-1',
       note: 'looks good',
+      promoterStatus: 'affiliate',
     });
 
     expect(db.promoterProfile.updateMany).toHaveBeenCalled();
@@ -129,13 +130,62 @@ describe('PromoterService', () => {
       data: expect.objectContaining({
         tenantId: 'tenant-1',
         tenantUserId: 'tu-1',
-        promoterStatus: 'promoter',
+        promoterStatus: 'affiliate',
         qualificationSource: 'manual',
         manualOverride: true,
       }),
     });
     expect(result.application.status).toBe('approved');
-    expect(result.profile.promoterStatus).toBe('promoter');
+    expect(result.profile.promoterStatus).toBe('affiliate');
+  });
+
+  it('manually activates a promoter with a chosen promoter type', async () => {
+    db.tenantUser.findFirst.mockResolvedValue({
+      id: 'tu-9',
+      tenantId: 'tenant-1',
+      externalUserId: 'alice',
+    });
+    db.promoterProfile.findFirst.mockResolvedValue(null);
+    db.promoterApplication.create.mockResolvedValue({
+      id: 'app-manual-1',
+      tenantId: 'tenant-1',
+      tenantUserId: 'tu-9',
+      status: 'approved',
+      notes: 'manual activation',
+      submittedAt: new Date('2026-04-25T00:00:00.000Z'),
+      reviewedAt: new Date('2026-04-25T00:00:00.000Z'),
+      reviewedByAdminId: 'admin-1',
+    });
+    db.promoterProfile.create.mockResolvedValue({
+      id: 'profile-manual-1',
+      tenantId: 'tenant-1',
+      tenantUserId: 'tu-9',
+      promoterStatus: 'creator',
+      qualificationSource: 'manual',
+      manualOverride: true,
+      effectiveFrom: new Date('2026-04-25T00:00:00.000Z'),
+      effectiveTo: null,
+    });
+
+    const result = await (svc as any).manualActivatePromoter({
+      tenantId: 'tenant-1',
+      tenantUserId: 'tu-9',
+      adminUserId: 'admin-1',
+      promoterStatus: 'creator',
+      note: 'manual activation',
+    });
+
+    expect(db.promoterApplication.create).toHaveBeenCalled();
+    expect(db.promoterProfile.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tenantId: 'tenant-1',
+        tenantUserId: 'tu-9',
+        promoterStatus: 'creator',
+        qualificationSource: 'manual',
+        manualOverride: true,
+      }),
+    });
+    expect(result.profile.promoterStatus).toBe('creator');
   });
 
   it('rejects an application without creating a promoter profile', async () => {
@@ -227,7 +277,9 @@ describe('PromoterService', () => {
       effectiveTo: null,
     });
 
-    const result = await svc.evaluateAutoQualifications({ asOf: isoDate('2026-04-25T00:00:00.000Z') });
+    const result = await svc.evaluateAutoQualifications({
+      asOf: isoDate('2026-04-25T00:00:00.000Z'),
+    });
 
     expect(db.promoterProfile.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -275,7 +327,9 @@ describe('PromoterService', () => {
       },
     ]);
 
-    const result = await svc.evaluateAutoQualifications({ asOf: isoDate('2026-04-25T00:00:00.000Z') });
+    const result = await svc.evaluateAutoQualifications({
+      asOf: isoDate('2026-04-25T00:00:00.000Z'),
+    });
 
     expect(db.promoterProfile.create).not.toHaveBeenCalled();
     expect(result.transitions).toBe(0);
@@ -306,7 +360,11 @@ describe('PromoterService', () => {
   });
 
   it('rejects approving a non-submitted application', async () => {
-    db.promoterApplication.findUnique.mockResolvedValue({ id: 'app-4', status: 'approved', links: [] });
+    db.promoterApplication.findUnique.mockResolvedValue({
+      id: 'app-4',
+      status: 'approved',
+      links: [],
+    });
 
     await expect(
       svc.approveApplication({ applicationId: 'app-4', adminUserId: 'admin-1' }),

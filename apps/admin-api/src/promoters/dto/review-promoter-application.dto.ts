@@ -5,4 +5,9 @@ export class ReviewPromoterApplicationDto {
   @IsString()
   @Length(1, 2000)
   note?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 64)
+  promoterStatus?: string;
 }
