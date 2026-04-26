@@ -3,6 +3,7 @@ import {
   addPromoterType,
   addPromoterTypeTier,
   deletePromoterType,
+  listSelectablePromoterTypes,
   serializePromoterConfigDraft,
   setPromoterTypeEnabled,
   toPromoterConfigDraft,
@@ -104,5 +105,27 @@ describe('promoter-config helpers', () => {
         bonusTiers: [{ depth: 1, type: 'flat', value: '12.5' }],
       },
     ]);
+  });
+
+  it('lists tenant-selectable promoter types from enabled promoter config instead of hardcoded defaults', () => {
+    expect(
+      listSelectablePromoterTypes({
+        enabled: true,
+        types: [
+          { key: 'test', enabled: true, bonusTiers: [{ depth: 1, type: 'percent', value: '5' }] },
+          {
+            key: 'promoter_2',
+            enabled: true,
+            bonusTiers: [{ depth: 1, type: 'percent', value: '2' }],
+          },
+          {
+            key: 'disabled_type',
+            enabled: false,
+            bonusTiers: [{ depth: 1, type: 'percent', value: '1' }],
+          },
+        ],
+      }),
+    ).toEqual(['test', 'promoter_2']);
+    expect(listSelectablePromoterTypes({ enabled: false, types: [] })).toEqual(['promoter']);
   });
 });

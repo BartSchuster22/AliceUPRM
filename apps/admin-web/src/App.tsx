@@ -47,6 +47,7 @@ import {
 import { RewardConfigEditor } from './RewardConfigEditor';
 import { PromoterConfigEditor } from './PromoterConfigEditor';
 import { FraudConfigEditor } from './FraudConfigEditor';
+import { listSelectablePromoterTypes } from './promoter-config';
 import { buildPromoterApplicationRows, summarizePromoterPerformance } from './promoter-browser';
 import { combineUserRows, type UserListRow } from './user-browser';
 import { NAV_ITEMS, type ViewKey } from './dashboard-nav';
@@ -164,6 +165,23 @@ export default function App() {
     [visiblePromoterApplications, selectedPromoterApplicationId],
   );
 
+  const manualPromoterTypeOptions = useMemo(
+    () =>
+      listSelectablePromoterTypes(
+        tenants.find((tenant) => tenant.id === manualPromoterForm.tenantId)?.config?.promoterConfig,
+      ),
+    [manualPromoterForm.tenantId, tenants],
+  );
+
+  const promoterReviewTypeOptions = useMemo(
+    () =>
+      listSelectablePromoterTypes(
+        tenants.find((tenant) => tenant.id === selectedVisiblePromoterApplication?.tenant_id)
+          ?.config?.promoterConfig,
+      ),
+    [selectedVisiblePromoterApplication?.tenant_id, tenants],
+  );
+
   const manualPromoterTenantUsers = useMemo(
     () =>
       promoterUserDirectory.filter((user) =>
@@ -234,6 +252,18 @@ export default function App() {
       fraudConfig: prettyJson(selectedTenant.config?.fraudConfig ?? {}),
     });
   }, [selectedTenant]);
+
+  useEffect(() => {
+    const fallbackStatus = manualPromoterTypeOptions[0] ?? 'promoter';
+    if (manualPromoterTypeOptions.includes(manualPromoterForm.promoterStatus)) return;
+    setManualPromoterForm((current) => ({ ...current, promoterStatus: fallbackStatus }));
+  }, [manualPromoterForm.promoterStatus, manualPromoterTypeOptions]);
+
+  useEffect(() => {
+    const fallbackStatus = promoterReviewTypeOptions[0] ?? 'promoter';
+    if (promoterReviewTypeOptions.includes(promoterReviewStatus)) return;
+    setPromoterReviewStatus(fallbackStatus);
+  }, [promoterReviewStatus, promoterReviewTypeOptions]);
 
   useEffect(() => {
     if (!token) return;
@@ -1585,10 +1615,11 @@ export default function App() {
                         value={promoterReviewStatus}
                         onChange={(event) => setPromoterReviewStatus(event.target.value)}
                       >
-                        <option value="promoter">promoter</option>
-                        <option value="affiliate">affiliate</option>
-                        <option value="creator">creator</option>
-                        <option value="partner">partner</option>
+                        {promoterReviewTypeOptions.map((typeKey) => (
+                          <option key={typeKey} value={typeKey}>
+                            {typeKey}
+                          </option>
+                        ))}
                       </select>
                     </label>
                     <div className="toolbar-inline">
@@ -1856,10 +1887,11 @@ export default function App() {
                       }))
                     }
                   >
-                    <option value="promoter">promoter</option>
-                    <option value="affiliate">affiliate</option>
-                    <option value="creator">creator</option>
-                    <option value="partner">partner</option>
+                    {manualPromoterTypeOptions.map((typeKey) => (
+                      <option key={typeKey} value={typeKey}>
+                        {typeKey}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label className="field">

@@ -49,6 +49,20 @@ export function serializePromoterConfigDraft(draft: PromoterConfigDraft): Promot
   };
 }
 
+export function listSelectablePromoterTypes(raw: unknown): string[] {
+  const draft = toPromoterConfigDraft(raw);
+  if (!draft.enabled) {
+    return ['promoter'];
+  }
+
+  const enabledTypes = draft.types
+    .filter((typeRecord) => typeRecord.enabled)
+    .map((typeRecord) => normalizeKey(typeRecord.key, ''))
+    .filter((key) => key.length > 0);
+
+  return enabledTypes.length > 0 ? enabledTypes : ['promoter'];
+}
+
 export function addPromoterType(draft: PromoterConfigDraft): PromoterConfigDraft {
   return {
     ...draft,
