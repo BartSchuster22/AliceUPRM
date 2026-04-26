@@ -1,4 +1,4 @@
-import { IsString, Length } from 'class-validator';
+import { IsOptional, IsString, Length } from 'class-validator';
 
 export class ManualCreatePromoterDto {
   @IsString()
@@ -13,7 +13,8 @@ export class ManualCreatePromoterDto {
   @Length(1, 64)
   promoterStatus!: string;
 
+  @IsOptional()
   @IsString()
   @Length(1, 2000)
-  note!: string;
+  note?: string;
 }

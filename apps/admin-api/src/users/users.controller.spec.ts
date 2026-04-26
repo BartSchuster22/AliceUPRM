@@ -128,6 +128,24 @@ describe('AdminUsersController', () => {
         ],
         balance: null,
         payouts: [],
+        promoterMemberships: [
+          {
+            id: 'profile-psi',
+            tenantId: 'tenant-psi',
+            tenantUserId: 'tu-psi-alice',
+            promoterStatus: 'promoter_2',
+            qualificationSource: 'manual',
+            manualOverride: true,
+            effectiveFrom: new Date('2026-04-10T00:00:00Z'),
+            effectiveTo: null,
+            tenant: {
+              id: 'tenant-psi',
+              name: 'PSI',
+              slug: 'psi',
+              status: 'active',
+            },
+          },
+        ],
       }),
     };
 
@@ -153,6 +171,14 @@ describe('AdminUsersController', () => {
             ancestor_tenant_user_id: 'tu-user0',
             ancestor_tenant_id: 'tenant-uprm',
             depth: 2,
+          }),
+        ],
+        promoter_memberships: [
+          expect.objectContaining({
+            tenant_id: 'tenant-psi',
+            promoter_status: 'promoter_2',
+            qualification_source: 'manual',
+            manual_override: true,
           }),
         ],
       }),

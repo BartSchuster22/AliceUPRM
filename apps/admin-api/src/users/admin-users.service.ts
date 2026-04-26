@@ -79,6 +79,23 @@ export class AdminUsersService {
       this.referrals.getEffectiveReferralChain(tenantId, tenantUserId, 3),
     ]);
 
+    const activePromoterProfiles = await this.db.promoterProfile.findMany({
+      where: {
+        tenantUserId: {
+          in: memberships.map((membership: any) => membership.id),
+        },
+        effectiveTo: null,
+      },
+      orderBy: [{ effectiveFrom: 'desc' }],
+    } as any);
+    const membershipById = new Map(
+      memberships.map((membership: any) => [membership.id, membership]),
+    );
+    const promoterMemberships = activePromoterProfiles.map((profile: any) => ({
+      ...profile,
+      tenantUser: membershipById.get(profile.tenantUserId) ?? null,
+    }));
+
     return {
       tenantUser,
       balance,
@@ -87,6 +104,7 @@ export class AdminUsersService {
       sourceTenantUser,
       memberships,
       effectiveReferralChain,
+      promoterMemberships,
     };
   }
 

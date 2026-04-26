@@ -695,7 +695,7 @@ export default function App() {
         tenantId: manualPromoterForm.tenantId,
         tenantUserId: manualPromoterForm.tenantUserId,
         promoterStatus: manualPromoterForm.promoterStatus,
-        note: manualPromoterForm.note,
+        ...(manualPromoterForm.note.trim() ? { note: manualPromoterForm.note.trim() } : {}),
       });
       setManualPromoterForm((current) => ({
         ...current,
@@ -903,6 +903,29 @@ export default function App() {
               <dd>{selectedTenant.status}</dd>
             </div>
           </dl>
+          <div>
+            <div className="field-label">Applied promoters</div>
+            {selectedTenant.active_promoters?.length ? (
+              <ul className="data-list compact-list">
+                {selectedTenant.active_promoters.map((profile) => (
+                  <li key={profile.id}>
+                    <strong>
+                      {profile.username || profile.external_user_id || profile.tenant_user_id}
+                    </strong>{' '}
+                    · {profile.promoter_status}
+                    <br />
+                    <span className="muted">
+                      {profile.qualification_source || 'unknown source'}
+                      {' · '}
+                      {profile.manual_override ? 'manual override' : 'auto/system'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">No active promoters applied to this tenant.</p>
+            )}
+          </div>
         </section>
 
         <section className="panel">
@@ -1274,6 +1297,33 @@ export default function App() {
                     </dd>
                   </div>
                 </dl>
+                <div>
+                  <div className="field-label">Promoter memberships</div>
+                  {userDetail.promoter_memberships.length ? (
+                    <ul className="data-list compact-list">
+                      {userDetail.promoter_memberships.map((membership) => (
+                        <li key={membership.id}>
+                          <strong>
+                            {membership.tenant
+                              ? `${membership.tenant.name} (${membership.tenant.slug})`
+                              : membership.tenant_id}
+                          </strong>{' '}
+                          · {membership.promoter_status}
+                          <br />
+                          <span className="muted">
+                            {membership.qualification_source}
+                            {' · '}
+                            {membership.manual_override ? 'manual override' : 'auto/system'}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted">
+                      This user is not currently applied as an active promoter.
+                    </p>
+                  )}
+                </div>
               </section>
 
               <section className="panel">
@@ -1576,8 +1626,20 @@ export default function App() {
                     <dd>{selectedVisiblePromoterApplication.status}</dd>
                   </div>
                   <div>
-                    <dt>Promoter type</dt>
+                    <dt>Active promoter type</dt>
                     <dd>{selectedVisiblePromoterApplication.promoter_status}</dd>
+                  </div>
+                  <div>
+                    <dt>Promoter source</dt>
+                    <dd>{selectedVisiblePromoterApplication.promoter_source || 'unknown'}</dd>
+                  </div>
+                  <div>
+                    <dt>Override mode</dt>
+                    <dd>
+                      {selectedVisiblePromoterApplication.manual_override
+                        ? 'manual override'
+                        : 'auto/system'}
+                    </dd>
                   </div>
                   <div>
                     <dt>Paid referrals</dt>

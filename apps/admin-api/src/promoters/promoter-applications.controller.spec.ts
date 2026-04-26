@@ -96,7 +96,7 @@ describe('PromoterApplicationsController admin review', () => {
     );
   });
 
-  it('creates a promoter manually with a selected promoter type', async () => {
+  it('creates a promoter manually with a selected promoter type and optional note', async () => {
     (controller as any).svc = {
       manualActivatePromoter: jest.fn().mockResolvedValue({
         application: {
@@ -104,13 +104,19 @@ describe('PromoterApplicationsController admin review', () => {
           tenantId: 'tenant-psi',
           tenantUserId: 'tu-9',
           status: 'approved',
-          notes: 'manual add',
+          notes: null,
           links: [],
         },
         profile: {
           id: 'profile-manual-1',
           promoterStatus: 'creator',
         },
+      }),
+      getPromoterStatus: jest.fn().mockResolvedValue({
+        promoterStatus: 'creator',
+        qualificationSource: 'manual',
+        manualOverride: true,
+        source: 'profile',
       }),
     };
     (controller as any).audit = {
@@ -135,7 +141,6 @@ describe('PromoterApplicationsController admin review', () => {
         tenantId: 'tenant-psi',
         tenantUserId: 'tu-9',
         promoterStatus: 'creator',
-        note: 'manual add',
       },
       req,
     );
@@ -146,11 +151,16 @@ describe('PromoterApplicationsController admin review', () => {
         tenantUserId: 'tu-9',
         adminUserId: 'admin-1',
         promoterStatus: 'creator',
-        note: 'manual add',
+        note: undefined,
       },
     );
     expect(result).toEqual(
-      expect.objectContaining({ id: 'app-manual-1', status: 'approved' }),
+      expect.objectContaining({
+        id: 'app-manual-1',
+        status: 'approved',
+        promoter_status: 'creator',
+        manual_override: true,
+      }),
     );
     expect((controller as any).audit.write).toHaveBeenCalled();
   });

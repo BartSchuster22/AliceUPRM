@@ -5,6 +5,17 @@ export interface TenantRecord {
   status: string;
   baseCurrency: string;
   config?: Record<string, unknown>;
+  active_promoters?: Array<{
+    id: string;
+    tenant_user_id: string;
+    promoter_status: string;
+    qualification_source: string | null;
+    manual_override: boolean;
+    effective_from: string;
+    effective_to: string | null;
+    username: string | null;
+    external_user_id: string | null;
+  }>;
 }
 
 export interface LoginResponse {
@@ -81,6 +92,22 @@ export interface TenantUserDetail {
     relation_type: string;
     created_at: string;
   }>;
+  promoter_memberships: Array<{
+    id: string;
+    tenant_id: string;
+    tenant_user_id: string;
+    promoter_status: string;
+    qualification_source: string;
+    manual_override: boolean;
+    effective_from: string;
+    effective_to: string | null;
+    tenant: {
+      id: string;
+      name: string;
+      slug: string;
+      status: string;
+    } | null;
+  }>;
   balance: {
     account_id: string;
     account_type: string;
@@ -117,6 +144,7 @@ export interface PromoterApplicationRow {
   tenant_user_id: string;
   status: string;
   promoter_status: string;
+  promoter_source: string | null;
   qualification_source: string | null;
   manual_override: boolean;
   notes: string | null;
@@ -383,7 +411,12 @@ export async function reviewPromoterApplication(
 
 export async function manualCreatePromoter(
   token: string,
-  payload: { tenantId: string; tenantUserId: string; promoterStatus: string; note: string },
+  payload: {
+    tenantId: string;
+    tenantUserId: string;
+    promoterStatus: string;
+    note?: string;
+  },
 ) {
   return request('/admin/promoter-applications/manual-create', {
     method: 'POST',

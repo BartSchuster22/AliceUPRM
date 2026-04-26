@@ -144,7 +144,7 @@ export class TenantsController {
   @Get()
   @Roles('super_admin', 'tenant_admin', 'support')
   async list() {
-    return this.svc.listTenants();
+    return (await this.svc.listTenants()).map(mapTenantRecord);
   }
 
   @Get(':id')
@@ -152,7 +152,7 @@ export class TenantsController {
   async get(@Param('id') id: string) {
     const t = await this.svc.getTenant(id);
     if (!t) throw new NotFoundException('tenant not found');
-    return t;
+    return mapTenantRecord(t);
   }
 
   @Post(':id/config')
@@ -282,4 +282,21 @@ function validateRewardConfig(raw: Record<string, unknown>) {
 
     throw error;
   }
+}
+
+function mapTenantRecord(tenant: any) {
+  return {
+    ...tenant,
+    active_promoters: (tenant.activePromoters ?? []).map((profile: any) => ({
+      id: profile.id,
+      tenant_user_id: profile.tenantUserId,
+      promoter_status: profile.promoterStatus,
+      qualification_source: profile.qualificationSource,
+      manual_override: Boolean(profile.manualOverride),
+      effective_from: profile.effectiveFrom,
+      effective_to: profile.effectiveTo ?? null,
+      username: profile.tenantUser?.username ?? null,
+      external_user_id: profile.tenantUser?.externalUserId ?? null,
+    })),
+  };
 }

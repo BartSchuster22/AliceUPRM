@@ -71,17 +71,67 @@ export class TenantService {
   }
 
   async getTenant(id: string): Promise<any> {
-    return this.db.tenant.findUnique({
+    const tenant = await this.db.tenant.findUnique({
       where: { id },
       include: { config: true },
     });
+    if (!tenant) {
+      return null;
+    }
+    const activePromoters = await this.db.promoterProfile.findMany({
+      where: { tenantId: id, effectiveTo: null },
+      orderBy: [{ effectiveFrom: 'desc' }],
+    } as any);
+    const tenantUsers = await this.db.tenantUser.findMany({
+      where: { id: { in: activePromoters.map((profile: any) => profile.tenantUserId) } },
+      select: {
+        id: true,
+        username: true,
+        externalUserId: true,
+      },
+    } as any);
+    const tenantUserById = new Map(tenantUsers.map((row: any) => [row.id, row]));
+    return {
+      ...tenant,
+      activePromoters: activePromoters.map((profile: any) => ({
+        ...profile,
+        tenantUser: tenantUserById.get(profile.tenantUserId) ?? null,
+      })),
+    };
   }
 
   async listTenants(): Promise<any[]> {
-    return this.db.tenant.findMany({
+    const tenants = await this.db.tenant.findMany({
       include: { config: true },
       orderBy: [{ createdAt: 'asc' }],
     });
+    const activePromoters = await this.db.promoterProfile.findMany({
+      where: { effectiveTo: null },
+      orderBy: [{ effectiveFrom: 'desc' }],
+    } as any);
+    const tenantUsers = await this.db.tenantUser.findMany({
+      where: { id: { in: activePromoters.map((profile: any) => profile.tenantUserId) } },
+      select: {
+        id: true,
+        username: true,
+        externalUserId: true,
+      },
+    } as any);
+    const tenantUserById = new Map(tenantUsers.map((row: any) => [row.id, row]));
+    const byTenant = new Map<string, any[]>();
+    for (const profile of activePromoters) {
+      byTenant.set(profile.tenantId, [
+        ...(byTenant.get(profile.tenantId) ?? []),
+        {
+          ...profile,
+          tenantUser: tenantUserById.get(profile.tenantUserId) ?? null,
+        },
+      ]);
+    }
+    return tenants.map((tenant) => ({
+      ...tenant,
+      activePromoters: byTenant.get(tenant.id) ?? [],
+    }));
   }
 
   async updateConfig(

@@ -56,7 +56,7 @@ export class PromoterApplicationsController {
       null,
       result.application,
     );
-    return mapApplication(result.application);
+    return this.mapApplicationWithStatus(result.application);
   }
 
   @Post(':id/approve')
@@ -200,6 +200,7 @@ function mapApplication(application: any, promoterStatus?: any) {
     status: application.status,
     promoter_status:
       promoterStatus?.promoterStatus ?? inferPromoterStatus(application.status),
+    promoter_source: promoterStatus?.source ?? null,
     qualification_source: promoterStatus?.qualificationSource ?? null,
     manual_override: promoterStatus?.manualOverride ?? false,
     notes: application.notes ?? null,

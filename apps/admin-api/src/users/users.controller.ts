@@ -193,6 +193,26 @@ function mapUserDetail(detail: any) {
         created_at: row.createdAt,
       }),
     ),
+    promoter_memberships: (detail.promoterMemberships ?? []).map(
+      (profile: any) => ({
+        id: profile.id,
+        tenant_id: profile.tenantId,
+        tenant_user_id: profile.tenantUserId,
+        promoter_status: profile.promoterStatus,
+        qualification_source: profile.qualificationSource,
+        manual_override: Boolean(profile.manualOverride),
+        effective_from: profile.effectiveFrom,
+        effective_to: profile.effectiveTo,
+        tenant: profile.tenantUser?.tenant
+          ? {
+              id: profile.tenantUser.tenant.id,
+              name: profile.tenantUser.tenant.name,
+              slug: profile.tenantUser.tenant.slug,
+              status: profile.tenantUser.tenant.status,
+            }
+          : null,
+      }),
+    ),
   };
 }
 

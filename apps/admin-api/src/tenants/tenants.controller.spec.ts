@@ -15,15 +15,44 @@ describe('TenantsController webhook config', () => {
     controller = new TenantsController();
   });
 
-  it('lists tenants for the admin shell switcher', async () => {
+  it('lists tenants for the admin shell switcher with active promoter summaries', async () => {
     (controller as any).svc = {
-      listTenants: jest
-        .fn()
-        .mockResolvedValue([{ id: 'tenant-1', slug: 'psi' }]),
+      listTenants: jest.fn().mockResolvedValue([
+        {
+          id: 'tenant-1',
+          slug: 'psi',
+          name: 'PSI',
+          activePromoters: [
+            {
+              id: 'profile-1',
+              tenantUserId: 'tu-alice',
+              promoterStatus: 'promoter_2',
+              qualificationSource: 'manual',
+              manualOverride: true,
+              effectiveFrom: new Date('2026-04-10T00:00:00Z'),
+              tenantUser: {
+                id: 'tu-alice',
+                username: 'alice',
+                externalUserId: 'psi-alice',
+              },
+            },
+          ],
+        },
+      ]),
     };
 
     await expect(controller.list()).resolves.toEqual([
-      { id: 'tenant-1', slug: 'psi' },
+      expect.objectContaining({
+        id: 'tenant-1',
+        slug: 'psi',
+        active_promoters: [
+          expect.objectContaining({
+            tenant_user_id: 'tu-alice',
+            promoter_status: 'promoter_2',
+            username: 'alice',
+          }),
+        ],
+      }),
     ]);
   });
 
