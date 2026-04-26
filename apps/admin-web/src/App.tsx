@@ -25,6 +25,7 @@ import {
   fetchUserDetail,
   fetchUsers,
   fetchWebhookDeliveries,
+  fetchWebhookDeliveryDetail,
   login,
   manualCreatePromoter,
   openSettlementCycle,
@@ -42,6 +43,7 @@ import {
   type TenantRecord,
   type TenantUserDetail,
   type TenantUserSummary,
+  type WebhookDeliveryDetail,
   type WebhookDeliveryRow,
 } from './api';
 import { RewardConfigEditor } from './RewardConfigEditor';
@@ -114,6 +116,7 @@ export default function App() {
   const [reports, setReports] = useState<ReportsOverview | null>(null);
   const [fraudCases, setFraudCases] = useState<FraudCaseRow[]>([]);
   const [selectedFraudCaseId, setSelectedFraudCaseId] = useState('');
+  const [fraudDetailOpen, setFraudDetailOpen] = useState(false);
   const [fraudCaseDetail, setFraudCaseDetail] = useState<FraudCaseDetail | null>(null);
   const [fraudResolutionNote, setFraudResolutionNote] = useState('');
   const [fraudStatusFilter, setFraudStatusFilter] = useState('');
@@ -122,6 +125,13 @@ export default function App() {
   const [selectedSettlementCycleId, setSelectedSettlementCycleId] = useState('');
   const [settlementNote, setSettlementNote] = useState('');
   const [webhookDeliveries, setWebhookDeliveries] = useState<WebhookDeliveryRow[]>([]);
+  const [webhookTenantFilterId, setWebhookTenantFilterId] = useState('all');
+  const [webhookHttpStatusFilter, setWebhookHttpStatusFilter] = useState('');
+  const [selectedWebhookDeliveryId, setSelectedWebhookDeliveryId] = useState('');
+  const [webhookDetailOpen, setWebhookDetailOpen] = useState(false);
+  const [webhookDeliveryDetail, setWebhookDeliveryDetail] = useState<WebhookDeliveryDetail | null>(
+    null,
+  );
 
   const selectedTenant = useMemo(
     () => tenants.find((tenant) => tenant.id === selectedTenantId) ?? tenants[0] ?? null,
@@ -205,6 +215,30 @@ export default function App() {
       settlementCycles[0] ??
       null,
     [selectedSettlementCycleId, settlementCycles],
+  );
+
+  const webhookStatusCodeOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          webhookDeliveries
+            .map((row) => row.last_status_code)
+            .filter((value): value is number => value !== null),
+        ),
+      )
+        .sort((left, right) => left - right)
+        .map((value) => String(value)),
+    [webhookDeliveries],
+  );
+
+  const visibleWebhookDeliveries = useMemo(
+    () =>
+      webhookHttpStatusFilter
+        ? webhookDeliveries.filter(
+            (row) => String(row.last_status_code ?? '') === webhookHttpStatusFilter,
+          )
+        : webhookDeliveries,
+    [webhookDeliveries, webhookHttpStatusFilter],
   );
 
   useEffect(() => {
@@ -295,6 +329,7 @@ export default function App() {
     selectedTenantId,
     fraudStatusFilter,
     fraudSeverityFilter,
+    webhookTenantFilterId,
   ]);
 
   useEffect(() => {
@@ -564,6 +599,9 @@ export default function App() {
       await replayWebhookDelivery(token, id);
       setStatus('Webhook delivery replay queued.');
       await loadWebhookDeliveries(token);
+      if (webhookDetailOpen && selectedWebhookDeliveryId === id) {
+        await openWebhookDelivery(id);
+      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Failed to replay webhook delivery.');
     } finally {
@@ -574,12 +612,39 @@ export default function App() {
   async function loadWebhookDeliveries(nextToken: string) {
     try {
       const rows = await fetchWebhookDeliveries(nextToken, {
-        tenantId: selectedTenantId || undefined,
+        tenantId: webhookTenantFilterId === 'all' ? undefined : webhookTenantFilterId || undefined,
       });
       setWebhookDeliveries(rows);
+      setSelectedWebhookDeliveryId((current) =>
+        current && rows.some((row) => row.id === current) ? current : (rows[0]?.id ?? ''),
+      );
+      if (!rows.length) {
+        setWebhookDeliveryDetail(null);
+        setWebhookDetailOpen(false);
+      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Failed to load webhook deliveries.');
     }
+  }
+
+  async function openWebhookDelivery(id: string) {
+    if (!token) return;
+    setSelectedWebhookDeliveryId(id);
+    setLoading(true);
+    try {
+      setWebhookDeliveryDetail(await fetchWebhookDeliveryDetail(token, id));
+      setWebhookDetailOpen(true);
+      setStatus('Webhook detail loaded.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Failed to load webhook detail.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function closeWebhookDetail() {
+    setWebhookDetailOpen(false);
+    setWebhookDeliveryDetail(null);
   }
 
   async function loadPromoterState(nextToken: string) {
@@ -751,15 +816,13 @@ export default function App() {
         severity: fraudSeverityFilter || undefined,
       });
       setFraudCases(rows);
-      const nextId =
-        selectedFraudCaseId && rows.some((row) => row.id === selectedFraudCaseId)
-          ? selectedFraudCaseId
-          : (rows[0]?.id ?? '');
-      setSelectedFraudCaseId(nextId);
-      if (nextId) {
-        setFraudCaseDetail(await fetchFraudCaseDetail(nextToken, nextId));
-      } else {
+      setSelectedFraudCaseId((current) =>
+        current && rows.some((row) => row.id === current) ? current : (rows[0]?.id ?? ''),
+      );
+      if (!rows.length) {
         setFraudCaseDetail(null);
+        setSelectedFraudCaseId('');
+        setFraudDetailOpen(false);
       }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Failed to load fraud cases.');
@@ -772,12 +835,19 @@ export default function App() {
     setLoading(true);
     try {
       setFraudCaseDetail(await fetchFraudCaseDetail(token, id));
+      setFraudDetailOpen(true);
       setStatus('Fraud case detail loaded.');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Failed to load fraud case detail.');
     } finally {
       setLoading(false);
     }
+  }
+
+  function closeFraudDetail() {
+    setFraudDetailOpen(false);
+    setFraudCaseDetail(null);
+    setFraudResolutionNote('');
   }
 
   async function submitFraudResolution(action: 'allow' | 'reject' | 'escalate') {
@@ -792,6 +862,7 @@ export default function App() {
       );
       setFraudCaseDetail(detail);
       setFraudResolutionNote('');
+      setFraudDetailOpen(true);
       setStatus(`Fraud case ${action} succeeded.`);
       await loadFraudState(token);
     } catch (error) {
@@ -1548,53 +1619,154 @@ export default function App() {
             </section>
           ))}
 
-        {view === 'webhooks' && (
-          <section className="panel">
-            <h3>Webhook deliveries</h3>
-            {webhookDeliveries.length ? (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Created</th>
-                      <th>Event</th>
-                      <th>Status</th>
-                      <th>Attempts</th>
-                      <th>Endpoint</th>
-                      <th>Last status</th>
-                      <th>Last error</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {webhookDeliveries.map((row) => (
-                      <tr key={row.id}>
-                        <td>{formatDate(row.created_at)}</td>
-                        <td>{row.event_type}</td>
-                        <td>{row.status}</td>
-                        <td>{row.attempt_count}</td>
-                        <td>{row.endpoint_url}</td>
-                        <td>{row.last_status_code ?? '—'}</td>
-                        <td>{row.last_error || '—'}</td>
-                        <td>
-                          <button
-                            className="secondary"
-                            onClick={() => void replayWebhook(row.id)}
-                            disabled={loading}
-                          >
-                            Replay
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+        {view === 'webhooks' &&
+          (webhookDetailOpen && webhookDeliveryDetail ? (
+            <section className="panel">
+              <div className="panel-inline tenant-detail-header">
+                <div>
+                  <h3>Webhook detail</h3>
+                  <p className="muted">
+                    {webhookDeliveryDetail.event_type} ·{' '}
+                    {formatDate(webhookDeliveryDetail.created_at)}
+                  </p>
+                </div>
+                <button className="secondary" onClick={closeWebhookDetail}>
+                  Close
+                </button>
               </div>
-            ) : (
-              <p className="muted">No webhook deliveries recorded yet.</p>
-            )}
-          </section>
-        )}
+              <dl className="detail-list">
+                <div>
+                  <dt>Tenant involved</dt>
+                  <dd>
+                    {webhookDeliveryDetail.tenant
+                      ? `${webhookDeliveryDetail.tenant.name} (${webhookDeliveryDetail.tenant.slug})`
+                      : webhookDeliveryDetail.tenant_id}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Event</dt>
+                  <dd>{webhookDeliveryDetail.event_type}</dd>
+                </div>
+                <div>
+                  <dt>Balance</dt>
+                  <dd>
+                    {webhookDeliveryDetail.balance_minor
+                      ? `${webhookDeliveryDetail.balance_minor} ${webhookDeliveryDetail.currency ?? ''}`.trim()
+                      : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Delivery status</dt>
+                  <dd>
+                    {webhookDeliveryDetail.status} · {webhookDeliveryDetail.last_status_code ?? '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Endpoint</dt>
+                  <dd>{webhookDeliveryDetail.endpoint_url}</dd>
+                </div>
+                <div>
+                  <dt>Source event</dt>
+                  <dd>{webhookDeliveryDetail.source_event_id ?? '—'}</dd>
+                </div>
+              </dl>
+              <div>
+                <div className="field-label">Users involved</div>
+                {webhookDeliveryDetail.users_involved.length ? (
+                  <ul className="data-list compact-list">
+                    {webhookDeliveryDetail.users_involved.map((user) => (
+                      <li key={user.tenant_user_id}>
+                        <strong>
+                          {user.username || user.external_user_id || user.tenant_user_id}
+                        </strong>
+                        <br />
+                        <span className="muted">{user.email || user.tenant_user_id}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted">No user identities were attached to this webhook payload.</p>
+                )}
+              </div>
+              <div className="toolbar-inline">
+                <button
+                  className="secondary"
+                  onClick={() => void replayWebhook(webhookDeliveryDetail.id)}
+                  disabled={loading}
+                >
+                  Replay
+                </button>
+              </div>
+              <div>
+                <div className="field-label">Raw payload</div>
+                <pre>{JSON.stringify(webhookDeliveryDetail.payload, null, 2)}</pre>
+              </div>
+            </section>
+          ) : (
+            <section className="panel">
+              <h3>Webhook deliveries</h3>
+              <div className="toolbar-inline promoter-toolbar-wrap">
+                <label className="field" style={{ minWidth: 220 }}>
+                  <span>Filter: from tenant</span>
+                  <select
+                    value={webhookTenantFilterId}
+                    onChange={(event) => setWebhookTenantFilterId(event.target.value)}
+                  >
+                    <option value="all">All</option>
+                    {tenants.map((tenant) => (
+                      <option key={tenant.id} value={tenant.id}>
+                        {tenant.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field" style={{ minWidth: 180 }}>
+                  <span>Status code</span>
+                  <select
+                    value={webhookHttpStatusFilter}
+                    onChange={(event) => setWebhookHttpStatusFilter(event.target.value)}
+                  >
+                    <option value="">All</option>
+                    {webhookStatusCodeOptions.map((statusCode) => (
+                      <option key={statusCode} value={statusCode}>
+                        {statusCode}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {visibleWebhookDeliveries.length ? (
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Event</th>
+                        <th>Status</th>
+                        <th>Last status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleWebhookDeliveries.map((row) => (
+                        <tr
+                          key={row.id}
+                          className="interactive-row"
+                          onClick={() => void openWebhookDelivery(row.id)}
+                        >
+                          <td>{formatDate(row.created_at)}</td>
+                          <td>{row.event_type}</td>
+                          <td>{row.status}</td>
+                          <td>{row.last_status_code ?? '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="muted">No webhook deliveries recorded yet.</p>
+              )}
+            </section>
+          ))}
 
         {view === 'promoters' &&
           (promoterDetailOpen && selectedVisiblePromoterApplication ? (
@@ -1982,8 +2154,129 @@ export default function App() {
               </section>
             </section>
           ))}
-        {view === 'fraud' && (
-          <section className="panel-grid panel-grid-wide">
+        {view === 'fraud' &&
+          (fraudDetailOpen && fraudCaseDetail ? (
+            <section className="panel">
+              <div className="panel-inline tenant-detail-header">
+                <div>
+                  <h3>Fraud case detail</h3>
+                  <p className="muted">
+                    {(fraudCaseDetail.user_label ||
+                      fraudCaseDetail.user_email ||
+                      fraudCaseDetail.tenant_user_id ||
+                      'Unknown user') +
+                      ' · ' +
+                      (fraudCaseDetail.tenant_name || fraudCaseDetail.tenant_id)}
+                  </p>
+                </div>
+                <button className="secondary" onClick={closeFraudDetail}>
+                  Close
+                </button>
+              </div>
+              <dl className="detail-list">
+                <div>
+                  <dt>User</dt>
+                  <dd>
+                    {fraudCaseDetail.user_label ||
+                      fraudCaseDetail.user_email ||
+                      fraudCaseDetail.tenant_user_id ||
+                      '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Tenant</dt>
+                  <dd>{fraudCaseDetail.tenant_name || fraudCaseDetail.tenant_id}</dd>
+                </div>
+                <div>
+                  <dt>Status</dt>
+                  <dd>{fraudCaseDetail.status}</dd>
+                </div>
+                <div>
+                  <dt>Severity</dt>
+                  <dd>{fraudCaseDetail.severity}</dd>
+                </div>
+                <div>
+                  <dt>Score</dt>
+                  <dd>{fraudCaseDetail.score_total}</dd>
+                </div>
+                <div>
+                  <dt>Holds</dt>
+                  <dd>{fraudCaseDetail.hold_count}</dd>
+                </div>
+              </dl>
+              <label className="field">
+                <span>Reviewer note</span>
+                <textarea
+                  value={fraudResolutionNote}
+                  rows={4}
+                  onChange={(event) => setFraudResolutionNote(event.target.value)}
+                />
+              </label>
+              <div className="toolbar-inline">
+                <button
+                  className="primary"
+                  onClick={() => void submitFraudResolution('allow')}
+                  disabled={loading}
+                >
+                  Allow
+                </button>
+                <button
+                  className="secondary"
+                  onClick={() => void submitFraudResolution('reject')}
+                  disabled={loading}
+                >
+                  Reject
+                </button>
+                <button
+                  className="secondary"
+                  onClick={() => void submitFraudResolution('escalate')}
+                  disabled={loading}
+                >
+                  Escalate
+                </button>
+              </div>
+              <h4>Signals</h4>
+              {fraudCaseDetail.related_signals.length ? (
+                <ul className="data-list">
+                  {fraudCaseDetail.related_signals.map((signal) => (
+                    <li key={signal.id}>
+                      <strong>{signal.signal_type}</strong> · score {signal.score} ·{' '}
+                      {signal.severity}
+                      <br />
+                      <span className="muted">{JSON.stringify(signal.metadata)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted">No related signals recorded.</p>
+              )}
+              <h4>Reward holds</h4>
+              {fraudCaseDetail.reward_holds.length ? (
+                <ul className="data-list">
+                  {fraudCaseDetail.reward_holds.map((hold) => (
+                    <li key={hold.id}>
+                      {hold.scheduled_posting_id} · {hold.status} · {hold.reason_code}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted">No reward holds on this case.</p>
+              )}
+              <h4>Case history</h4>
+              {fraudCaseDetail.events.length ? (
+                <ul className="data-list">
+                  {fraudCaseDetail.events.map((event) => (
+                    <li key={event.id}>
+                      <strong>{event.action}</strong> · {event.actor_type} ·{' '}
+                      {formatDate(event.created_at)}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted">No case events recorded.</p>
+              )}
+            </section>
+          ) : (
             <section className="panel">
               <h3>Fraud case queue</h3>
               <div className="toolbar-inline">
@@ -2013,7 +2306,7 @@ export default function App() {
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Opened</th>
+                        <th>Date</th>
                         <th>User</th>
                         <th>Status</th>
                         <th>Severity</th>
@@ -2023,9 +2316,13 @@ export default function App() {
                     </thead>
                     <tbody>
                       {fraudCases.map((row) => (
-                        <tr key={row.id} onClick={() => void selectFraudCase(row.id)}>
+                        <tr
+                          key={row.id}
+                          className="interactive-row"
+                          onClick={() => void selectFraudCase(row.id)}
+                        >
                           <td>{formatDate(row.opened_at)}</td>
-                          <td>{row.tenant_user_id || '—'}</td>
+                          <td>{row.user_label || row.user_email || row.tenant_user_id || '—'}</td>
                           <td>{row.status}</td>
                           <td>{row.severity}</td>
                           <td>{row.score_total}</td>
@@ -2039,106 +2336,7 @@ export default function App() {
                 <p className="muted">No fraud cases found for the current filters.</p>
               )}
             </section>
-            <section className="panel">
-              <h3>Fraud case detail</h3>
-              {fraudCaseDetail ? (
-                <>
-                  <dl className="detail-list">
-                    <div>
-                      <dt>Status</dt>
-                      <dd>{fraudCaseDetail.status}</dd>
-                    </div>
-                    <div>
-                      <dt>Severity</dt>
-                      <dd>{fraudCaseDetail.severity}</dd>
-                    </div>
-                    <div>
-                      <dt>Score</dt>
-                      <dd>{fraudCaseDetail.score_total}</dd>
-                    </div>
-                    <div>
-                      <dt>Holds</dt>
-                      <dd>{fraudCaseDetail.hold_count}</dd>
-                    </div>
-                  </dl>
-                  <label className="field">
-                    <span>Reviewer note</span>
-                    <textarea
-                      value={fraudResolutionNote}
-                      rows={4}
-                      onChange={(event) => setFraudResolutionNote(event.target.value)}
-                    />
-                  </label>
-                  <div className="toolbar-inline">
-                    <button
-                      className="primary"
-                      onClick={() => void submitFraudResolution('allow')}
-                      disabled={loading}
-                    >
-                      Allow
-                    </button>
-                    <button
-                      className="secondary"
-                      onClick={() => void submitFraudResolution('reject')}
-                      disabled={loading}
-                    >
-                      Reject
-                    </button>
-                    <button
-                      className="secondary"
-                      onClick={() => void submitFraudResolution('escalate')}
-                      disabled={loading}
-                    >
-                      Escalate
-                    </button>
-                  </div>
-                  <h4>Signals</h4>
-                  {fraudCaseDetail.related_signals.length ? (
-                    <ul className="data-list">
-                      {fraudCaseDetail.related_signals.map((signal) => (
-                        <li key={signal.id}>
-                          <strong>{signal.signal_type}</strong> · score {signal.score} ·{' '}
-                          {signal.severity}
-                          <br />
-                          <span className="muted">{JSON.stringify(signal.metadata)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="muted">No related signals recorded.</p>
-                  )}
-                  <h4>Reward holds</h4>
-                  {fraudCaseDetail.reward_holds.length ? (
-                    <ul className="data-list">
-                      {fraudCaseDetail.reward_holds.map((hold) => (
-                        <li key={hold.id}>
-                          {hold.scheduled_posting_id} · {hold.status} · {hold.reason_code}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="muted">No reward holds on this case.</p>
-                  )}
-                  <h4>Case history</h4>
-                  {fraudCaseDetail.events.length ? (
-                    <ul className="data-list">
-                      {fraudCaseDetail.events.map((event) => (
-                        <li key={event.id}>
-                          <strong>{event.action}</strong> · {event.actor_type} ·{' '}
-                          {formatDate(event.created_at)}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="muted">No case events recorded.</p>
-                  )}
-                </>
-              ) : (
-                <p className="muted">Select a fraud case to inspect and resolve it.</p>
-              )}
-            </section>
-          </section>
-        )}
+          ))}
         {view === 'settlements' && (
           <section className="panel-grid panel-grid-wide">
             <section className="panel">

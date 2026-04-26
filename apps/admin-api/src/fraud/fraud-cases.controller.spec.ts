@@ -6,9 +6,29 @@ describe('FraudCasesController', () => {
 
   beforeEach(() => {
     controller = new FraudCasesController();
+    (controller as any).db = {
+      tenantUser: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'user-1',
+            username: 'alice',
+            externalUserId: 'alice-ext',
+            user: { emailNormalized: 'alice@example.com' },
+            tenant: { name: 'PSI', slug: 'psi' },
+          },
+        ]),
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'user-1',
+          username: 'alice',
+          externalUserId: 'alice-ext',
+          user: { emailNormalized: 'alice@example.com' },
+          tenant: { name: 'PSI', slug: 'psi' },
+        }),
+      },
+    };
   });
 
-  it('lists fraud cases with normalized fields', async () => {
+  it('lists fraud cases with normalized enriched fields', async () => {
     (controller as any).fraud = {
       listCases: jest.fn().mockResolvedValue([
         {
@@ -45,6 +65,10 @@ describe('FraudCasesController', () => {
         id: 'case-1',
         tenant_id: 'tenant-1',
         tenant_user_id: 'user-1',
+        tenant_name: 'PSI',
+        tenant_slug: 'psi',
+        user_label: 'alice',
+        user_email: 'alice@example.com',
         status: 'open',
         severity: 'high',
         score_total: 120,
@@ -53,7 +77,7 @@ describe('FraudCasesController', () => {
     );
   });
 
-  it('returns detail payload with signals, holds, and events', async () => {
+  it('returns detail payload with signals, holds, events, and enriched labels', async () => {
     (controller as any).fraud = {
       getCase: jest.fn().mockResolvedValue({
         id: 'case-1',
@@ -113,7 +137,8 @@ describe('FraudCasesController', () => {
     };
 
     const result = await controller.detail('case-1');
-    expect(result.id).toBe('case-1');
+    expect(result.user_label).toBe('alice');
+    expect(result.tenant_name).toBe('PSI');
     expect(result.related_signals).toHaveLength(1);
     expect(result.reward_holds).toHaveLength(1);
     expect(result.events).toHaveLength(1);

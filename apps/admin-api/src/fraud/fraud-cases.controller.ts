@@ -9,6 +9,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { prisma } from '@uprm/db';
 import { FraudService } from '@uprm/fraud';
 import { AuditService } from '../audit/audit.service';
 import { AdminJwtGuard } from '../auth/admin-jwt.guard';
@@ -23,6 +24,7 @@ import { ResolveFraudCaseDto } from './dto/resolve-fraud-case.dto';
 export class FraudCasesController {
   private readonly fraud = new FraudService();
   private readonly audit = new AuditService();
+  private readonly db = prisma;
 
   @Get()
   @Roles('super_admin', 'tenant_admin', 'fraud_reviewer', 'support')
@@ -33,21 +35,27 @@ export class FraudCasesController {
       severity: query.severity,
     });
 
-    return rows.map((row) => ({
-      id: row.id,
-      tenant_id: row.tenantId,
-      tenant_user_id: row.tenantUserId,
-      status: row.status,
-      severity: row.severity,
-      score_total: row.scoreTotal,
-      hold_count: row.holdCount,
-      resolution: row.resolution,
-      resolution_note: row.resolutionNote,
-      opened_by_signal_id: row.openedBySignalId,
-      opened_at: row.openedAt,
-      resolved_at: row.resolvedAt,
-      threshold_snapshot: row.thresholdSnapshot,
-    }));
+    const tenantUserIds = Array.from(
+      new Set(
+        rows
+          .map((row) => row.tenantUserId)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+    const tenantUsers = tenantUserIds.length
+      ? await this.db.tenantUser.findMany({
+          where: { id: { in: tenantUserIds } },
+          include: { user: true, tenant: true },
+        })
+      : [];
+
+    return rows.map((row) =>
+      this.mapFraudCaseRow(
+        row,
+        tenantUsers.find((tenantUser) => tenantUser.id === row.tenantUserId) ??
+          null,
+      ),
+    );
   }
 
   @Get(':id')
@@ -58,21 +66,25 @@ export class FraudCasesController {
       throw new NotFoundException('fraud case not found');
     }
 
+    const tenantUser = detail.tenantUserId
+      ? await this.db.tenantUser.findUnique({
+          where: { id: detail.tenantUserId },
+          include: { user: true, tenant: true },
+        })
+      : null;
+
     return {
-      id: detail.id,
-      tenant_id: detail.tenantId,
-      tenant_user_id: detail.tenantUserId,
-      status: detail.status,
-      severity: detail.severity,
-      score_total: detail.scoreTotal,
-      hold_count: detail.holdCount,
-      resolution: detail.resolution,
-      resolution_note: detail.resolutionNote,
-      opened_by_signal_id: detail.openedBySignalId,
-      opened_at: detail.openedAt,
-      resolved_at: detail.resolvedAt,
-      threshold_snapshot: detail.thresholdSnapshot,
-      opened_by_signal: detail.openedBySignal,
+      ...this.mapFraudCaseRow(detail, tenantUser),
+      opened_by_signal: detail.openedBySignal
+        ? {
+            id: detail.openedBySignal.id,
+            signalType: detail.openedBySignal.signalType,
+            score: detail.openedBySignal.score,
+            severity: detail.openedBySignal.severity,
+            metadata: detail.openedBySignal.metadata,
+            createdAt: detail.openedBySignal.createdAt,
+          }
+        : null,
       reward_holds: detail.rewardHolds.map((hold) => ({
         id: hold.id,
         scheduled_posting_id: hold.scheduledPostingId,
@@ -181,5 +193,31 @@ export class FraudCasesController {
     }
 
     return this.detail(id);
+  }
+
+  private mapFraudCaseRow(row: any, tenantUser: any) {
+    return {
+      id: row.id,
+      tenant_id: row.tenantId,
+      tenant_user_id: row.tenantUserId,
+      tenant_name: tenantUser?.tenant?.name ?? null,
+      tenant_slug: tenantUser?.tenant?.slug ?? null,
+      user_label:
+        tenantUser?.username ??
+        tenantUser?.externalUserId ??
+        tenantUser?.user?.emailNormalized ??
+        null,
+      user_email: tenantUser?.user?.emailNormalized ?? null,
+      status: row.status,
+      severity: row.severity,
+      score_total: row.scoreTotal,
+      hold_count: row.holdCount,
+      resolution: row.resolution,
+      resolution_note: row.resolutionNote,
+      opened_by_signal_id: row.openedBySignalId,
+      opened_at: row.openedAt,
+      resolved_at: row.resolvedAt,
+      threshold_snapshot: row.thresholdSnapshot,
+    };
   }
 }

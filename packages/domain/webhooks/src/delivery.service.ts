@@ -83,6 +83,10 @@ export class WebhookDeliveryService {
     });
   }
 
+  async getDelivery(id: string): Promise<DeliveryRecord | null> {
+    return this.db.webhookDelivery.findUnique({ where: { id } });
+  }
+
   async markDelivered(id: string, statusCode: number): Promise<DeliveryRecord> {
     return this.db.webhookDelivery.update({
       where: { id },

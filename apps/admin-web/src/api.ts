@@ -194,6 +194,10 @@ export interface FraudCaseRow {
   id: string;
   tenant_id: string;
   tenant_user_id: string | null;
+  tenant_name: string | null;
+  tenant_slug: string | null;
+  user_label: string | null;
+  user_email: string | null;
   status: string;
   severity: string;
   score_total: number;
@@ -259,6 +263,24 @@ export interface WebhookDeliveryRow {
   source_event_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface WebhookDeliveryDetail extends WebhookDeliveryRow {
+  tenant: {
+    id: string;
+    name: string;
+    slug: string;
+    status: string;
+  } | null;
+  users_involved: Array<{
+    tenant_user_id: string;
+    username: string | null;
+    external_user_id: string | null;
+    email: string | null;
+  }>;
+  balance_minor: string | null;
+  currency: string | null;
+  payload: Record<string, unknown>;
 }
 
 export interface ReportsOverview {
@@ -498,6 +520,13 @@ export async function fetchWebhookDeliveries(
   if (filters.eventType) params.set('eventType', filters.eventType);
   const suffix = params.toString() ? `?${params.toString()}` : '';
   return request(`/admin/webhook-deliveries${suffix}`, { headers: authHeaders(token) });
+}
+
+export async function fetchWebhookDeliveryDetail(
+  token: string,
+  id: string,
+): Promise<WebhookDeliveryDetail> {
+  return request(`/admin/webhook-deliveries/${id}`, { headers: authHeaders(token) });
 }
 
 export async function replayWebhookDelivery(token: string, id: string) {
