@@ -73,9 +73,32 @@ export function RewardConfigEditor({ value, disabled = false, onChange }: Reward
 
       {mode === 'visual' ? (
         <div className="reward-editor-stack">
+          <div className="reward-editor-summary-card">
+            <div>
+              <div className="field-label">Reward rulebook</div>
+              <p className="muted">
+                Click editor for tiers and toggles. Raw code stays available any time.
+              </p>
+            </div>
+            <div className="reward-editor-summary-stats">
+              <span className="reward-stat-pill">
+                {draft.enabled ? 'Global: enabled' : 'Global: disabled'}
+              </span>
+              <span className="reward-stat-pill">
+                {draft.tiers.length} tier{draft.tiers.length === 1 ? '' : 's'}
+              </span>
+              <span className="reward-stat-pill">Currency: {FIXED_REWARD_CURRENCY}</span>
+            </div>
+          </div>
+
           <div className="reward-editor-meta-grid">
-            <label className="field toggle-field">
-              <span>Reward program enabled</span>
+            <label className="field toggle-field reward-toggle-card">
+              <span>
+                <strong>Global enabled</strong>
+                <small className="muted reward-help-text">
+                  Turns the tenant reward program on or off.
+                </small>
+              </span>
               <input
                 type="checkbox"
                 checked={draft.enabled}
@@ -89,12 +112,15 @@ export function RewardConfigEditor({ value, disabled = false, onChange }: Reward
               />
             </label>
 
-            <label className="field">
+            <label className="field reward-readonly-card">
               <span>Currency</span>
               <input value={FIXED_REWARD_CURRENCY} readOnly disabled />
+              <small className="muted reward-help-text">
+                Fixed internal unit for payouts and accounting.
+              </small>
             </label>
 
-            <label className="field">
+            <label className="field reward-readonly-card">
               <span>Settlement window days</span>
               <input
                 type="number"
@@ -109,10 +135,13 @@ export function RewardConfigEditor({ value, disabled = false, onChange }: Reward
                 }
                 disabled={disabled}
               />
+              <small className="muted reward-help-text">
+                How long rewards wait before settlement.
+              </small>
             </label>
           </div>
 
-          <div className="field">
+          <div className="field reward-readonly-card">
             <span>Triggers</span>
             <div className="pill-list">
               {(draft.triggers.length ? draft.triggers : DEFAULT_REWARD_TRIGGERS).map((trigger) => (
@@ -121,6 +150,9 @@ export function RewardConfigEditor({ value, disabled = false, onChange }: Reward
                 </span>
               ))}
             </div>
+            <small className="muted reward-help-text">
+              These events currently activate reward evaluation.
+            </small>
           </div>
 
           <div className="field">
@@ -128,8 +160,8 @@ export function RewardConfigEditor({ value, disabled = false, onChange }: Reward
               <div>
                 <span className="field-label">Tiers</span>
                 <p className="muted">
-                  Enable, edit, add, or delete reward levels. Disabling a tier disables every deeper
-                  level.
+                  Add, edit, enable, or delete reward levels. Toggling depth 2 also toggles every
+                  tier below it.
                 </p>
               </div>
               <button
@@ -138,7 +170,7 @@ export function RewardConfigEditor({ value, disabled = false, onChange }: Reward
                 onClick={() => pushDraft(addTier(draft))}
                 disabled={disabled}
               >
-                Add tier
+                Add tier below last depth
               </button>
             </div>
 
@@ -149,8 +181,20 @@ export function RewardConfigEditor({ value, disabled = false, onChange }: Reward
                     key={tier.depth}
                     className={!tier.enabled ? 'reward-tier-row is-disabled' : 'reward-tier-row'}
                   >
-                    <label className="toggle-field reward-tier-toggle">
-                      <span>Enabled</span>
+                    <div className="reward-tier-header">
+                      <div className="reward-tier-depth-badge">Depth {tier.depth}</div>
+                      <small className="muted reward-help-text">
+                        {tier.depth === 1
+                          ? 'Top reward level'
+                          : `Enabled toggle here also affects depth ${tier.depth} and below.`}
+                      </small>
+                    </div>
+
+                    <label className="toggle-field reward-tier-toggle reward-toggle-card">
+                      <span>
+                        <strong>Enabled</strong>
+                        <small className="muted reward-help-text">Cascade starts here.</small>
+                      </span>
                       <input
                         type="checkbox"
                         checked={tier.enabled}
@@ -160,8 +204,6 @@ export function RewardConfigEditor({ value, disabled = false, onChange }: Reward
                         disabled={disabled}
                       />
                     </label>
-
-                    <div className="reward-tier-depth">Depth {tier.depth}</div>
 
                     <label className="field">
                       <span>Type</span>
@@ -202,14 +244,25 @@ export function RewardConfigEditor({ value, disabled = false, onChange }: Reward
                       onClick={() => pushDraft(deleteTier(draft, tier.depth))}
                       disabled={disabled}
                     >
-                      Delete
+                      Delete tier
                     </button>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="empty-state-inline">
-                No tiers yet. Add the first reward tier to start the ladder.
+              <div className="empty-state-inline reward-empty-state">
+                <div>
+                  <strong>No tiers yet.</strong>
+                  <p className="muted">Add the first reward tier to start the ladder.</p>
+                </div>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => pushDraft(addTier(draft))}
+                  disabled={disabled}
+                >
+                  Add first tier
+                </button>
               </div>
             )}
           </div>
