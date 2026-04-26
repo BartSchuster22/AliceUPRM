@@ -43,6 +43,33 @@ describe('buildStripeCheckoutSessionParams', () => {
     });
   });
 
+  it('includes wallet redemption metadata and adjusted amount when credits are applied', () => {
+    const params = buildStripeCheckoutSessionParams({
+      externalUserId: 'psi-user-1',
+      plan: 'product_monthly',
+      productName: 'PSI Agent Monthly',
+      amountMinor: 3700,
+      currency: 'EUR',
+      billingInterval: 'month',
+      successUrl: 'https://app.aquiero.com/onboarding?session_id={CHECKOUT_SESSION_ID}',
+      cancelUrl: 'https://aquiero.com/pricing',
+      appliedCredits: 1200,
+      walletRedemptionId: 'wr-1',
+      tenantUserId: 'tenant-user-1',
+      userId: 'user-1',
+    });
+
+    expect(params.metadata).toEqual({
+      externalUserId: 'psi-user-1',
+      plan: 'product_monthly',
+      appliedCredits: '1200',
+      walletRedemptionId: 'wr-1',
+      tenantUserId: 'tenant-user-1',
+      userId: 'user-1',
+    });
+    expect(params.line_items?.[0]?.price_data?.unit_amount).toBe(3700);
+  });
+
   it('omits optional referral code when not provided', () => {
     const params = buildStripeCheckoutSessionParams({
       externalUserId: 'psi-user-2',

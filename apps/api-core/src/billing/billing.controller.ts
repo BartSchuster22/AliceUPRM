@@ -11,6 +11,7 @@ import {
 import { StripeCheckoutService } from '@uprm/payments';
 import { TenantService } from '@uprm/tenants';
 import { HmacAuthGuard } from '../auth/hmac-auth.guard';
+import { BillingCreditService } from './billing-credit.service';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 
 @Controller('v1/billing')
@@ -18,6 +19,7 @@ import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 export class BillingController {
   private readonly tenantSvc = new TenantService();
   private readonly payments = new StripeCheckoutService();
+  private readonly billingCredits = new BillingCreditService();
 
   @Post('checkout-sessions')
   async createCheckoutSession(
@@ -81,6 +83,14 @@ export class BillingController {
       );
     }
 
+    const billingCredits = await this.billingCredits.prepareCheckout({
+      tenantId,
+      externalUserId: dto.externalUserId,
+      amountMinor: resolvedAmountMinor,
+      applyCredits: dto.applyCredits,
+      creditsToUse: dto.creditsToUse,
+    });
+
     return this.payments
       .createCheckoutSession({
         externalUserId: dto.externalUserId,
@@ -89,7 +99,7 @@ export class BillingController {
         ...(resolvedProductDescription
           ? { productDescription: resolvedProductDescription }
           : {}),
-        amountMinor: resolvedAmountMinor,
+        amountMinor: billingCredits.adjustedAmountMinor,
         currency: resolvedCurrency,
         billingInterval: resolvedBillingInterval,
         successUrl: dto.successUrl,
@@ -97,6 +107,16 @@ export class BillingController {
         ...(dto.referralCodeUsed
           ? { referralCodeUsed: dto.referralCodeUsed }
           : {}),
+        ...(billingCredits.appliedCredits !== undefined
+          ? { appliedCredits: billingCredits.appliedCredits }
+          : {}),
+        ...(billingCredits.walletRedemptionId
+          ? { walletRedemptionId: billingCredits.walletRedemptionId }
+          : {}),
+        ...(billingCredits.tenantUserId
+          ? { tenantUserId: billingCredits.tenantUserId }
+          : {}),
+        ...(billingCredits.userId ? { userId: billingCredits.userId } : {}),
       })
       .catch((error: Error) => {
         if (error.message === 'STRIPE_SECRET_KEY is required') {

@@ -14,6 +14,10 @@ export interface CreateCheckoutSessionInput {
   successUrl: string;
   cancelUrl: string;
   referralCodeUsed?: string;
+  appliedCredits?: number;
+  walletRedemptionId?: string;
+  tenantUserId?: string;
+  userId?: string;
 }
 
 interface StripeChargeLike {
@@ -77,6 +81,22 @@ export function buildStripeCheckoutSessionParams(
 
   if (input.referralCodeUsed) {
     metadata.referralCodeUsed = input.referralCodeUsed;
+  }
+
+  if (input.appliedCredits !== undefined) {
+    metadata.appliedCredits = String(input.appliedCredits);
+  }
+
+  if (input.walletRedemptionId) {
+    metadata.walletRedemptionId = input.walletRedemptionId;
+  }
+
+  if (input.tenantUserId) {
+    metadata.tenantUserId = input.tenantUserId;
+  }
+
+  if (input.userId) {
+    metadata.userId = input.userId;
   }
 
   return {
@@ -202,6 +222,9 @@ export class StripeWebhookService {
       plan,
       amount: formatMinorUnits(amountTotal),
       currency: currency.toUpperCase(),
+      ...(buildWalletCheckoutMetadata(session.metadata)
+        ? { metadata: buildWalletCheckoutMetadata(session.metadata)! }
+        : {}),
     };
   }
 
@@ -534,6 +557,28 @@ function toId(value: string | { id?: string | null } | null | undefined): string
   if (!value) return null;
   if (typeof value === 'string') return value;
   return value.id ?? null;
+}
+
+function buildWalletCheckoutMetadata(metadata?: Record<string, string> | null) {
+  if (!metadata) {
+    return null;
+  }
+
+  const walletRedemptionId = metadata.walletRedemptionId;
+  const appliedCredits = metadata.appliedCredits;
+  const tenantUserId = metadata.tenantUserId;
+  const userId = metadata.userId;
+
+  if (!walletRedemptionId && !appliedCredits && !tenantUserId && !userId) {
+    return null;
+  }
+
+  return {
+    ...(walletRedemptionId ? { walletRedemptionId } : {}),
+    ...(appliedCredits ? { appliedCredits } : {}),
+    ...(tenantUserId ? { tenantUserId } : {}),
+    ...(userId ? { userId } : {}),
+  };
 }
 
 function formatMinorUnits(amountMinor: number): string {

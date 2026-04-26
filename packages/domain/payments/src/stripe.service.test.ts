@@ -37,6 +37,50 @@ describe('StripeWebhookService', () => {
     });
   });
 
+  it('forwards wallet redemption metadata from checkout.session.completed into subscription_started', () => {
+    const svc = new StripeWebhookService({} as any, vi.fn() as any);
+    const event = {
+      id: 'evt_checkout_credits_1',
+      type: 'checkout.session.completed',
+      created: 1_713_960_000,
+      data: {
+        object: {
+          subscription: 'sub_credits_123',
+          currency: 'eur',
+          amount_total: 3700,
+          metadata: {
+            externalUserId: 'psi-user-1',
+            plan: 'psi-monthly',
+            walletRedemptionId: 'wr-1',
+            appliedCredits: '1200',
+            tenantUserId: 'tenant-user-1',
+            userId: 'user-1',
+          },
+        },
+      },
+    } as unknown as Stripe.Event;
+
+    const result = svc.normalize(event);
+
+    expect(result).toEqual({
+      eventType: 'subscription_started',
+      idempotencyKey: 'stripe:evt_checkout_credits_1',
+      externalEventId: 'evt_checkout_credits_1',
+      externalUserId: 'psi-user-1',
+      occurredAt: '2024-04-24T12:00:00.000Z',
+      subscriptionId: 'sub_credits_123',
+      plan: 'psi-monthly',
+      amount: '37.00',
+      currency: 'EUR',
+      metadata: {
+        walletRedemptionId: 'wr-1',
+        appliedCredits: '1200',
+        tenantUserId: 'tenant-user-1',
+        userId: 'user-1',
+      },
+    });
+  });
+
   it('maps invoice.paid into an invoice_paid UPRM event', () => {
     const svc = new StripeWebhookService({} as any, vi.fn() as any);
     const event = {

@@ -10,12 +10,14 @@ import {
 import { EventIngestionService } from '@uprm/events';
 import { StripeWebhookService } from '@uprm/payments';
 import { TenantService } from '@uprm/tenants';
+import { WalletRedemptionService } from '@uprm/wallet';
 
 @Controller('admin/webhooks/stripe')
 export class StripeWebhooksController {
   private readonly tenants = new TenantService();
   private readonly payments = new StripeWebhookService();
   private readonly events = new EventIngestionService();
+  private readonly walletRedemptions = new WalletRedemptionService();
 
   @Post(':tenantId')
   async handle(@Param('tenantId') tenantId: string, @Req() req: any) {
@@ -64,11 +66,28 @@ export class StripeWebhooksController {
       body: normalized,
     });
 
+    const walletRedemptionId = this.extractWalletRedemptionId(normalized);
+    if (walletRedemptionId) {
+      await this.walletRedemptions.markPosted(walletRedemptionId);
+    }
+
     return {
       event_id: result.eventId,
       processing_status: result.processingStatus,
       duplicate: result.duplicate,
       ignored: false,
     };
+  }
+
+  private extractWalletRedemptionId(normalized: any): string | null {
+    const metadata = normalized?.metadata;
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      return null;
+    }
+
+    const walletRedemptionId = (metadata as Record<string, unknown>).walletRedemptionId;
+    return typeof walletRedemptionId === 'string' && walletRedemptionId.length > 0
+      ? walletRedemptionId
+      : null;
   }
 }

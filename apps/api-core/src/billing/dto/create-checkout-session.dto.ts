@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -59,4 +60,13 @@ export class CreateCheckoutSessionDto {
   @IsString()
   @Length(1, 128)
   referralCodeUsed?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  applyCredits?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  creditsToUse?: number;
 }
