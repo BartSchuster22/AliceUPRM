@@ -24,9 +24,9 @@ model Tenant {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  apiKeys            TenantApiKey[]
-  config             TenantConfig?
-  tenantUsers        TenantUser[]
+  apiKeys     TenantApiKey[]
+  config      TenantConfig?
+  tenantUsers TenantUser[]
 
   @@index([sourceTenantId])
   @@index([sourceTenantUserId])
@@ -34,28 +34,28 @@ model Tenant {
 }
 
 model TenantApiKey {
-  id          String    @id @default(uuid())
-  tenantId    String
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  keyHash     String    @unique
-  keyPrefix   String    @unique
-  scopes      String[]  @default([])
-  status      String    @default("active")
-  lastUsedAt  DateTime?
-  createdAt   DateTime  @default(now())
+  id         String    @id @default(uuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  keyHash    String    @unique
+  keyPrefix  String    @unique
+  scopes     String[]  @default([])
+  status     String    @default("active")
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
 
   @@index([tenantId])
   @@map("tenant_api_keys")
 }
 
 model TenantConfig {
-  tenantId          String   @id
-  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  rewardConfig      Json     @default("{}")
-  promoterConfig    Json     @default("{}")
-  fraudConfig       Json     @default("{}")
-  webhookConfig     Json     @default("{}")
-  updatedAt         DateTime @updatedAt
+  tenantId       String   @id
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rewardConfig   Json     @default("{}")
+  promoterConfig Json     @default("{}")
+  fraudConfig    Json     @default("{}")
+  webhookConfig  Json     @default("{}")
+  updatedAt      DateTime @updatedAt
 
   @@map("tenant_configs")
 }
@@ -65,14 +65,15 @@ model TenantConfig {
 // ============================================================
 
 model User {
-  id              String       @id @default(uuid())
-  emailNormalized String       @unique
-  emailVerified   Boolean      @default(false)
-  status          String       @default("active")
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  id              String   @id @default(uuid())
+  emailNormalized String   @unique
+  emailVerified   Boolean  @default(false)
+  status          String   @default("active")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  tenantUsers     TenantUser[]
+  tenantUsers    TenantUser[]
+  walletAccounts WalletAccount[]
 
   @@map("users")
 }
@@ -99,19 +100,18 @@ model TenantUser {
   @@map("tenant_users")
 }
 
-
 // ============================================================
 // REFERRAL GRAPH MODELS
 // ============================================================
 
 model ReferralCode {
-  id            String    @id @default(uuid())
-  tenantId      String
-  tenantUserId  String
-  code          String
-  status        String    @default("active")
-  createdAt     DateTime  @default(now())
-  expiresAt     DateTime?
+  id           String    @id @default(uuid())
+  tenantId     String
+  tenantUserId String
+  code         String
+  status       String    @default("active")
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime?
 
   @@unique([tenantId, code])
   @@index([tenantUserId])
@@ -119,14 +119,14 @@ model ReferralCode {
 }
 
 model ReferralEdge {
-  id                       String    @id @default(uuid())
-  tenantId                 String
-  referrerTenantUserId     String
-  referredTenantUserId     String
-  sourceCodeId             String?
-  attributionMethod        String    @default("code")
-  createdAt                DateTime  @default(now())
-  lockedAt                 DateTime?
+  id                   String    @id @default(uuid())
+  tenantId             String
+  referrerTenantUserId String
+  referredTenantUserId String
+  sourceCodeId         String?
+  attributionMethod    String    @default("code")
+  createdAt            DateTime  @default(now())
+  lockedAt             DateTime?
 
   @@unique([tenantId, referredTenantUserId])
   @@index([tenantId, referrerTenantUserId])
@@ -134,24 +134,23 @@ model ReferralEdge {
 }
 
 model ReferralAncestry {
-  tenantId                 String
-  ancestorTenantUserId     String
-  descendantTenantUserId   String
-  depth                    Int
-  createdAt                DateTime  @default(now())
+  tenantId               String
+  ancestorTenantUserId   String
+  descendantTenantUserId String
+  depth                  Int
+  createdAt              DateTime @default(now())
 
   @@id([tenantId, descendantTenantUserId, ancestorTenantUserId])
   @@index([tenantId, ancestorTenantUserId])
   @@map("referral_ancestry")
 }
 
-
 // ============================================================
 // EVENT INGESTION MODELS
 // ============================================================
 
 model IngestedEvent {
-  id                 String    @id @default(uuid())
+  id                 String   @id @default(uuid())
   tenantId           String
   eventType          String
   externalEventId    String
@@ -159,10 +158,10 @@ model IngestedEvent {
   tenantUserId       String?
   payload            Json
   occurredAt         DateTime
-  receivedAt         DateTime  @default(now())
+  receivedAt         DateTime @default(now())
   idempotencyKey     String
-  processingStatus   String    @default("queued")
-  processingAttempts Int       @default(0)
+  processingStatus   String   @default("queued")
+  processingAttempts Int      @default(0)
   errorCode          String?
   errorMessage       String?
 
@@ -200,22 +199,21 @@ model EventLink {
   @@map("event_links")
 }
 
-
 // ============================================================
 // LEDGER MODELS  (Phase 4)
 // ============================================================
 
 model LedgerAccount {
-  id            String   @id @default(uuid())
-  tenantId      String
-  accountType   String   // 'tenant_cash' | 'tenant_revenue' | 'tenant_reward_expense' | 'user_balance' | 'platform_fee'
-  tenantUserId  String?  // null for system accounts; set for user_balance
-  currency      String
-  status        String   @default("active")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(uuid())
+  tenantId     String
+  accountType  String // 'tenant_cash' | 'tenant_revenue' | 'tenant_reward_expense' | 'user_balance' | 'platform_fee'
+  tenantUserId String? // null for system accounts; set for user_balance
+  currency     String
+  status       String   @default("active")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  postings      LedgerPosting[]
+  postings LedgerPosting[]
 
   // One account per (tenant, type, user, currency). Nulls are distinct in Postgres,
   // so user_balance uniqueness is effectively (tenantId, accountType, tenantUserId, currency).
@@ -225,15 +223,15 @@ model LedgerAccount {
 }
 
 model LedgerEntry {
-  id              String   @id @default(uuid())
-  tenantId        String
-  currency        String
-  description     String
-  idempotencyKey  String
-  sourceEventId   String?  // link back to the ingested_events row that caused this entry
-  createdAt       DateTime @default(now())
+  id             String   @id @default(uuid())
+  tenantId       String
+  currency       String
+  description    String
+  idempotencyKey String
+  sourceEventId  String? // link back to the ingested_events row that caused this entry
+  createdAt      DateTime @default(now())
 
-  postings        LedgerPosting[]
+  postings LedgerPosting[]
 
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, createdAt])
@@ -242,14 +240,14 @@ model LedgerEntry {
 }
 
 model LedgerPosting {
-  id         String   @id @default(uuid())
-  entryId    String
-  entry      LedgerEntry   @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  accountId  String
-  account    LedgerAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  amount     BigInt   // positive = debit, negative = credit; entry sum must equal 0
-  currency   String   // must match entry.currency and account.currency
-  createdAt  DateTime @default(now())
+  id        String        @id @default(uuid())
+  entryId   String
+  entry     LedgerEntry   @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  accountId String
+  account   LedgerAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  amount    BigInt // positive = debit, negative = credit; entry sum must equal 0
+  currency  String // must match entry.currency and account.currency
+  createdAt DateTime      @default(now())
 
   @@index([accountId, createdAt])
   @@index([entryId])
@@ -257,18 +255,18 @@ model LedgerPosting {
 }
 
 model ScheduledPosting {
-  id                    String    @id @default(uuid())
-  tenantId              String
+  id                      String   @id @default(uuid())
+  tenantId                String
   beneficiaryTenantUserId String?
-  sourceEventId         String    // event that triggered the scheduling
-  postAt                DateTime  // when the settlement window expires and this becomes eligible
-  status                String    @default("pending") // 'pending' | 'posted' | 'cancelled'
-  idempotencyKey        String
-  payload               Json      // {postings: [{accountId, amount, currency}, ...], description, currency}
-  resultEntryId         String?   // set after successful post
-  cancelReason          String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  sourceEventId           String // event that triggered the scheduling
+  postAt                  DateTime // when the settlement window expires and this becomes eligible
+  status                  String   @default("pending") // 'pending' | 'posted' | 'cancelled'
+  idempotencyKey          String
+  payload                 Json // {postings: [{accountId, amount, currency}, ...], description, currency}
+  resultEntryId           String? // set after successful post
+  cancelReason            String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   @@unique([tenantId, idempotencyKey])
   @@index([status, postAt])
@@ -278,27 +276,192 @@ model ScheduledPosting {
 }
 
 model PayoutRequest {
-  id                  String   @id @default(uuid())
+  id                  String    @id @default(uuid())
   tenantId            String
   tenantUserId        String
+  userId              String?
+  walletAccountId     String?
   amountMinor         BigInt
+  amountCredits       BigInt?
   baseCurrency        String
   destinationCurrency String?
   payoutMethod        String
   destination         Json
-  status              String   @default("requested") // requested | approved | sent | failed | cancelled
+  issuerBreakdownJson Json?
+  fxQuoteId           String?
+  status              String    @default("requested") // requested | approved | sent | failed | cancelled
   failureReason       String?
   externalPayoutId    String?
   approvedAt          DateTime?
   sentAt              DateTime?
   failedAt            DateTime?
   cancelledAt         DateTime?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@index([tenantId, tenantUserId, createdAt])
+  @@index([userId, createdAt])
+  @@index([walletAccountId, createdAt])
   @@index([status, createdAt])
   @@map("payout_requests")
+}
+
+model WalletAccount {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currency  String
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  grants             WalletGrant[]
+  redemptions        WalletRedemption[]
+  payoutReservations WalletPayoutReservation[]
+
+  @@unique([userId, currency])
+  @@index([status, createdAt])
+  @@map("wallet_accounts")
+}
+
+model WalletGrant {
+  id                  String        @id @default(uuid())
+  walletAccountId     String
+  walletAccount       WalletAccount @relation(fields: [walletAccountId], references: [id], onDelete: Cascade)
+  issuerTenantId      String?
+  sourceTenantUserId  String?
+  originType          String
+  sourceEventId       String?
+  sourceReferenceType String?
+  sourceReferenceId   String?
+  amountIssued        BigInt
+  amountRemaining     BigInt
+  fxQuoteId           String?
+  expiresAt           DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  redemptionAllocations WalletRedemptionAllocation[]
+  payoutAllocations     WalletPayoutAllocation[]
+
+  @@index([walletAccountId, createdAt])
+  @@index([issuerTenantId, createdAt])
+  @@index([originType, createdAt])
+  @@index([sourceEventId])
+  @@map("wallet_grants")
+}
+
+model WalletRedemption {
+  id                   String        @id @default(uuid())
+  walletAccountId      String
+  walletAccount        WalletAccount @relation(fields: [walletAccountId], references: [id], onDelete: Cascade)
+  spendingTenantId     String
+  spendingTenantUserId String?
+  purchaseRef          String?
+  orderRef             String?
+  amountCredits        BigInt
+  status               String        @default("reserved") // reserved | posted | reversed | released
+  createdAt            DateTime      @default(now())
+  postedAt             DateTime?
+  reversedAt           DateTime?
+  updatedAt            DateTime      @updatedAt
+
+  allocations WalletRedemptionAllocation[]
+
+  @@index([walletAccountId, createdAt])
+  @@index([spendingTenantId, createdAt])
+  @@index([status, createdAt])
+  @@map("wallet_redemptions")
+}
+
+model WalletRedemptionAllocation {
+  id             String           @id @default(uuid())
+  redemptionId   String
+  redemption     WalletRedemption @relation(fields: [redemptionId], references: [id], onDelete: Cascade)
+  walletGrantId  String
+  walletGrant    WalletGrant      @relation(fields: [walletGrantId], references: [id], onDelete: Cascade)
+  issuerTenantId String?
+  amountCredits  BigInt
+  createdAt      DateTime         @default(now())
+
+  @@index([redemptionId])
+  @@index([walletGrantId])
+  @@index([issuerTenantId, createdAt])
+  @@map("wallet_redemption_allocations")
+}
+
+model WalletPayoutReservation {
+  id              String        @id @default(uuid())
+  walletAccountId String
+  walletAccount   WalletAccount @relation(fields: [walletAccountId], references: [id], onDelete: Cascade)
+  issuerTenantId  String?
+  payoutRequestId String
+  amountCredits   BigInt
+  status          String        @default("reserved") // reserved | sent | released
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  allocations WalletPayoutAllocation[]
+
+  @@index([walletAccountId, createdAt])
+  @@index([payoutRequestId])
+  @@index([issuerTenantId, createdAt])
+  @@map("wallet_payout_reservations")
+}
+
+model WalletPayoutAllocation {
+  id                        String                  @id @default(uuid())
+  walletPayoutReservationId String
+  walletPayoutReservation   WalletPayoutReservation @relation(fields: [walletPayoutReservationId], references: [id], onDelete: Cascade)
+  walletGrantId             String
+  walletGrant               WalletGrant             @relation(fields: [walletGrantId], references: [id], onDelete: Cascade)
+  issuerTenantId            String?
+  amountCredits             BigInt
+  createdAt                 DateTime                @default(now())
+
+  @@index([walletPayoutReservationId])
+  @@index([walletGrantId])
+  @@index([issuerTenantId, createdAt])
+  @@map("wallet_payout_allocations")
+}
+
+model TenantClearingEntry {
+  id                   String    @id @default(uuid())
+  issuerTenantId       String?
+  counterpartyTenantId String?
+  platformSide         String?
+  flowType             String
+  direction            String
+  amountCredits        BigInt
+  referenceType        String?
+  referenceId          String?
+  status               String    @default("open") // open | settled | cancelled
+  createdAt            DateTime  @default(now())
+  settledAt            DateTime?
+  updatedAt            DateTime  @updatedAt
+
+  @@index([issuerTenantId, createdAt])
+  @@index([counterpartyTenantId, createdAt])
+  @@index([status, createdAt])
+  @@index([flowType, createdAt])
+  @@index([referenceType, referenceId])
+  @@map("tenant_clearing_entries")
+}
+
+model FxQuote {
+  id                  String   @id @default(uuid())
+  baseCurrency        String
+  quoteCurrency       String
+  rateDecimal         String
+  effectiveAt         DateTime
+  provider            String
+  sourceReferenceType String?
+  sourceReferenceId   String?
+  createdAt           DateTime @default(now())
+
+  @@index([baseCurrency, quoteCurrency, effectiveAt])
+  @@index([provider, effectiveAt])
+  @@map("fx_quotes")
 }
 
 model PromoterProfile {
@@ -318,17 +481,17 @@ model PromoterProfile {
 }
 
 model PromoterApplication {
-  id                String   @id @default(uuid())
+  id                String    @id @default(uuid())
   tenantId          String
   tenantUserId      String
-  submittedAt       DateTime @default(now())
-  status            String   @default("submitted") // submitted | under_review | approved | rejected
+  submittedAt       DateTime  @default(now())
+  status            String    @default("submitted") // submitted | under_review | approved | rejected
   reviewedByAdminId String?
   reviewedAt        DateTime?
   notes             String?
-  updatedAt         DateTime @updatedAt
+  updatedAt         DateTime  @updatedAt
 
-  links             PromoterApplicationLink[]
+  links PromoterApplicationLink[]
 
   @@index([tenantId, tenantUserId, submittedAt])
   @@index([tenantId, status, submittedAt])
@@ -336,12 +499,12 @@ model PromoterApplication {
 }
 
 model PromoterApplicationLink {
-  id                 String   @id @default(uuid())
+  id                 String              @id @default(uuid())
   applicationId      String
   application        PromoterApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   linkType           String
   url                String
-  verificationStatus String   @default("unverified") // unverified | verified | rejected
+  verificationStatus String              @default("unverified") // unverified | verified | rejected
   proofJson          Json?
 
   @@index([applicationId])
@@ -367,21 +530,29 @@ model PromoterMetricsDaily {
 }
 
 model SettlementCycle {
-  id                    String   @id @default(uuid())
-  tenantId              String
-  currency              String
-  periodStart           DateTime
-  periodEnd             DateTime
-  status                String   @default("open") // open | closed
-  ledgerLiabilityMinor  BigInt   @default(0)
-  pendingLiabilityMinor BigInt   @default(0)
-  totalLiabilityMinor   BigInt   @default(0)
-  note                  String?
-  openedByAdminId       String?
-  openedAt              DateTime @default(now())
-  closedByAdminId       String?
-  closedAt              DateTime?
-  updatedAt             DateTime @updatedAt
+  id                             String    @id @default(uuid())
+  tenantId                       String
+  currency                       String
+  periodStart                    DateTime
+  periodEnd                      DateTime
+  status                         String    @default("open") // open | closed
+  ledgerLiabilityMinor           BigInt    @default(0)
+  pendingLiabilityMinor          BigInt    @default(0)
+  totalLiabilityMinor            BigInt    @default(0)
+  fundedWalletLiabilityCredits   BigInt    @default(0)
+  pendingRewardLiabilityCredits  BigInt    @default(0)
+  payoutReservedLiabilityCredits BigInt    @default(0)
+  crossTenantReceivableCredits   BigInt    @default(0)
+  crossTenantPayableCredits      BigInt    @default(0)
+  netSettlementPositionCredits   BigInt    @default(0)
+  displayEurMinor                BigInt?
+  settlementVersion              String    @default("v2")
+  note                           String?
+  openedByAdminId                String?
+  openedAt                       DateTime  @default(now())
+  closedByAdminId                String?
+  closedAt                       DateTime?
+  updatedAt                      DateTime  @updatedAt
 
   @@index([tenantId, status, openedAt])
   @@index([tenantId, periodStart, periodEnd])
@@ -389,18 +560,18 @@ model SettlementCycle {
 }
 
 model AdminUser {
-  id           String   @id @default(uuid())
-  subject      String   @unique
-  email        String?  @unique
+  id           String    @id @default(uuid())
+  subject      String    @unique
+  email        String?   @unique
   displayName  String?
   passwordHash String?
-  roles        String[] @default([])
-  status       String   @default("active")
+  roles        String[]  @default([])
+  status       String    @default("active")
   lastLoginAt  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  auditLogs    AuditLog[]
+  auditLogs AuditLog[]
 
   @@map("admin_users")
 }
@@ -429,23 +600,23 @@ model AuditLog {
 }
 
 model WebhookDelivery {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   tenantId       String
   eventType      String
   endpointUrl    String
   signingSecret  String
   payload        Json
-  status         String   @default("pending")
-  attemptCount   Int      @default(0)
-  nextAttemptAt  DateTime @default(now())
+  status         String    @default("pending")
+  attemptCount   Int       @default(0)
+  nextAttemptAt  DateTime  @default(now())
   lastAttemptAt  DateTime?
   deliveredAt    DateTime?
   lastStatusCode Int?
   lastError      String?
   sourceTopic    String?
   sourceEventId  String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([tenantId, createdAt])
   @@index([status, nextAttemptAt])
@@ -466,32 +637,32 @@ model RiskSignal {
   metadata      Json     @default("{}")
   createdAt     DateTime @default(now())
 
-  openedCases   RiskCase[]
+  openedCases RiskCase[]
 
+  @@unique([tenantId, dedupeKey])
   @@index([tenantId, createdAt])
   @@index([tenantUserId, createdAt])
   @@index([signalType, createdAt])
-  @@unique([tenantId, dedupeKey])
   @@map("risk_signals")
 }
 
 model RiskCase {
-  id                  String   @id @default(uuid())
-  tenantId            String
-  tenantUserId        String?
-  status              String   @default("open")
-  severity            String
-  scoreTotal          Int
-  thresholdSnapshot   Json     @default("{}")
-  resolution          String?
-  resolutionNote      String?
-  openedBySignalId    String?
-  openedBySignal      RiskSignal? @relation(fields: [openedBySignalId], references: [id], onDelete: SetNull)
-  openedAt            DateTime @default(now())
-  resolvedAt          DateTime?
+  id                String      @id @default(uuid())
+  tenantId          String
+  tenantUserId      String?
+  status            String      @default("open")
+  severity          String
+  scoreTotal        Int
+  thresholdSnapshot Json        @default("{}")
+  resolution        String?
+  resolutionNote    String?
+  openedBySignalId  String?
+  openedBySignal    RiskSignal? @relation(fields: [openedBySignalId], references: [id], onDelete: SetNull)
+  openedAt          DateTime    @default(now())
+  resolvedAt        DateTime?
 
-  events              RiskCaseEvent[]
-  rewardHolds         RewardHold[]
+  events      RiskCaseEvent[]
+  rewardHolds RewardHold[]
 
   @@index([tenantId, status, openedAt])
   @@index([tenantUserId, status])
@@ -499,32 +670,32 @@ model RiskCase {
 }
 
 model RiskCaseEvent {
-  id          String   @id @default(uuid())
-  riskCaseId  String
-  riskCase    RiskCase @relation(fields: [riskCaseId], references: [id], onDelete: Cascade)
-  actorType   String
-  actorId     String?
-  action      String
-  beforeJson  Json?
-  afterJson   Json?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(uuid())
+  riskCaseId String
+  riskCase   RiskCase @relation(fields: [riskCaseId], references: [id], onDelete: Cascade)
+  actorType  String
+  actorId    String?
+  action     String
+  beforeJson Json?
+  afterJson  Json?
+  createdAt  DateTime @default(now())
 
   @@index([riskCaseId, createdAt])
   @@map("risk_case_events")
 }
 
 model RewardHold {
-  id                String   @id @default(uuid())
-  tenantId          String
-  tenantUserId      String
+  id                 String    @id @default(uuid())
+  tenantId           String
+  tenantUserId       String
   scheduledPostingId String
-  riskCaseId        String
-  riskCase          RiskCase @relation(fields: [riskCaseId], references: [id], onDelete: Cascade)
-  status            String   @default("active")
-  reasonCode        String
-  createdAt         DateTime @default(now())
-  releasedAt        DateTime?
-  rejectedAt        DateTime?
+  riskCaseId         String
+  riskCase           RiskCase  @relation(fields: [riskCaseId], references: [id], onDelete: Cascade)
+  status             String    @default("active")
+  reasonCode         String
+  createdAt          DateTime  @default(now())
+  releasedAt         DateTime?
+  rejectedAt         DateTime?
 
   @@unique([scheduledPostingId])
   @@index([tenantId, status, createdAt])
@@ -566,15 +737,15 @@ model RewardPerformanceDaily {
 }
 
 model TenantLiabilityDaily {
-  id                   String   @id @default(uuid())
-  tenantId             String
-  day                  DateTime
-  currency             String
-  rawLiabilityMinor    BigInt
+  id                    String   @id @default(uuid())
+  tenantId              String
+  day                   DateTime
+  currency              String
+  rawLiabilityMinor     BigInt
   displayLiabilityMinor BigInt
-  accountCount         Int
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  accountCount          Int
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   @@unique([tenantId, day, currency])
   @@index([tenantId, day])
