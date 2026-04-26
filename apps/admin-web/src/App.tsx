@@ -1673,17 +1673,25 @@ export default function App() {
               <div>
                 <div className="field-label">Users involved</div>
                 {webhookDeliveryDetail.users_involved.length ? (
-                  <ul className="data-list compact-list">
+                  <div className="webhook-user-card-grid">
                     {webhookDeliveryDetail.users_involved.map((user) => (
-                      <li key={user.tenant_user_id}>
-                        <strong>
-                          {user.username || user.external_user_id || user.tenant_user_id}
-                        </strong>
-                        <br />
-                        <span className="muted">{user.email || user.tenant_user_id}</span>
-                      </li>
+                      <article key={user.tenant_user_id} className="webhook-user-card">
+                        <div className="webhook-user-card-header">
+                          <strong>
+                            {user.username || user.external_user_id || user.tenant_user_id}
+                          </strong>
+                          <span className="pill">tenant user</span>
+                        </div>
+                        <div className="webhook-user-chip-list">
+                          {user.email ? <span className="pill">{user.email}</span> : null}
+                          {user.external_user_id ? (
+                            <span className="pill">external: {user.external_user_id}</span>
+                          ) : null}
+                          <span className="pill">id: {user.tenant_user_id}</span>
+                        </div>
+                      </article>
                     ))}
-                  </ul>
+                  </div>
                 ) : (
                   <p className="muted">No user identities were attached to this webhook payload.</p>
                 )}

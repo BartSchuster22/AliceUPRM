@@ -477,6 +477,35 @@ pre {
   color: #a4b2d6;
 }
 
+.webhook-user-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.webhook-user-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.webhook-user-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.webhook-user-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .error-text {
   color: #ff9ca8;
 }
