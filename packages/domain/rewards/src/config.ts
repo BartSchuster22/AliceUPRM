@@ -17,6 +17,7 @@ export const RewardConfigSchema = z.object({
         depth: z.number().int().min(1).max(10),
         type: z.enum(['percent', 'flat']),
         value: z.string().regex(/^\d+(\.\d{1,4})?$/), // "10", "2.5", "0.075"
+        enabled: z.boolean().default(true),
       }),
     )
     .min(1),

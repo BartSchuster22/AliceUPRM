@@ -43,6 +43,7 @@ import {
   type WebhookDeliveryRow,
 } from './api';
 import { RewardConfigEditor } from './RewardConfigEditor';
+import { PromoterConfigEditor } from './PromoterConfigEditor';
 
 type ViewKey =
   | 'tenants'
@@ -758,19 +759,16 @@ export default function App() {
                     }
                     disabled={loading}
                   />
-                  <label className="field">
-                    <span>Promoter config JSON</span>
-                    <textarea
-                      value={tenantConfigDrafts.promoterConfig}
-                      rows={6}
-                      onChange={(event) =>
-                        setTenantConfigDrafts((current) => ({
-                          ...current,
-                          promoterConfig: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
+                  <PromoterConfigEditor
+                    value={tenantConfigDrafts.promoterConfig}
+                    onChange={(promoterConfig) =>
+                      setTenantConfigDrafts((current) => ({
+                        ...current,
+                        promoterConfig,
+                      }))
+                    }
+                    disabled={loading}
+                  />
                   <label className="field">
                     <span>Fraud config JSON</span>
                     <textarea

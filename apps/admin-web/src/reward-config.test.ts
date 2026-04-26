@@ -16,15 +16,15 @@ describe('reward-config helpers', () => {
       settlementWindowDays: 7,
       triggers: ['invoice_paid'],
       tiers: [
-        { depth: 1, type: 'percent', value: '10' },
-        { depth: 2, type: 'flat', value: '5' },
+        { depth: 1, type: 'percent', value: '10', enabled: true },
+        { depth: 2, type: 'flat', value: '5', enabled: false },
       ],
     });
 
     expect(draft.currency).toBe('credit');
     expect(draft.tiers).toEqual([
       { depth: 1, type: 'percent', value: '10', enabled: true },
-      { depth: 2, type: 'flat', value: '5', enabled: true },
+      { depth: 2, type: 'flat', value: '5', enabled: false },
     ]);
   });
 
@@ -46,16 +46,16 @@ describe('reward-config helpers', () => {
     });
   });
 
-  it('disabling a tier disables that tier and everything below in serialized output', () => {
+  it('disabling a tier keeps it in serialized output with enabled=false so it can be re-enabled later', () => {
     const base = toRewardConfigDraft({
       enabled: true,
       currency: 'credit',
       settlementWindowDays: 7,
       triggers: ['invoice_paid'],
       tiers: [
-        { depth: 1, type: 'percent', value: '10' },
-        { depth: 2, type: 'percent', value: '2' },
-        { depth: 3, type: 'flat', value: '1' },
+        { depth: 1, type: 'percent', value: '10', enabled: true },
+        { depth: 2, type: 'percent', value: '2', enabled: true },
+        { depth: 3, type: 'flat', value: '1', enabled: true },
       ],
     });
 
@@ -64,7 +64,9 @@ describe('reward-config helpers', () => {
     expect(next.tiers[2]?.enabled).toBe(false);
 
     expect(serializeRewardConfigDraft(next).tiers).toEqual([
-      { depth: 1, type: 'percent', value: '10' },
+      { depth: 1, type: 'percent', value: '10', enabled: true },
+      { depth: 2, type: 'percent', value: '2', enabled: false },
+      { depth: 3, type: 'flat', value: '1', enabled: false },
     ]);
   });
 

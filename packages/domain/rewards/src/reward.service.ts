@@ -58,7 +58,7 @@ export class RewardService {
     const rewards: ComputedReward[] = [];
 
     for (const ancestor of relevantAncestors) {
-      const tier = config.tiers.find((t) => t.depth === ancestor.depth);
+      const tier = config.tiers.find((t) => t.depth === ancestor.depth && t.enabled !== false);
       if (!tier) continue;
 
       const amountMinor = this.applyTier(event.amountMinor, tier);

@@ -138,10 +138,28 @@ describe('RewardService.computeRewards — guards', () => {
   it('skips ancestors whose depth has no configured tier', () => {
     const result = svc.computeRewards(
       makeEvent(),
-      makeConfig({ tiers: [{ depth: 1, type: 'percent', value: '10' }] }),
+      makeConfig({ tiers: [{ depth: 1, type: 'percent', value: '10', enabled: true }] as any }),
       [
         { tenantUserId: 'alice', depth: 1 },
         { tenantUserId: 'root', depth: 2 }, // no tier for depth 2
+      ],
+    );
+    expect(result.rewards).toHaveLength(1);
+    expect(result.rewards[0]!.referrerTenantUserId).toBe('alice');
+  });
+
+  it('skips disabled tiers but keeps enabled ones active', () => {
+    const result = svc.computeRewards(
+      makeEvent(),
+      makeConfig({
+        tiers: [
+          { depth: 1, type: 'percent', value: '10', enabled: true },
+          { depth: 2, type: 'percent', value: '2', enabled: false },
+        ] as any,
+      }),
+      [
+        { tenantUserId: 'alice', depth: 1 },
+        { tenantUserId: 'root', depth: 2 },
       ],
     );
     expect(result.rewards).toHaveLength(1);
@@ -157,17 +175,18 @@ describe('RewardService.computeRewards — guards', () => {
 });
 
 describe('parseRewardConfig', () => {
-  it('accepts a valid config with fixed credit currency', async () => {
+  it('accepts a valid config with fixed credit currency and explicit tier enabled flags', async () => {
     const { parseRewardConfig } = await import('./config');
     const cfg = parseRewardConfig({
       enabled: true,
       currency: 'credit',
       settlementWindowDays: 7,
       triggers: ['invoice_paid'],
-      tiers: [{ depth: 1, type: 'percent', value: '10' }],
+      tiers: [{ depth: 1, type: 'percent', value: '10', enabled: true }],
     });
     expect(cfg.currency).toBe('credit');
     expect(cfg.tiers).toHaveLength(1);
+    expect(cfg.tiers[0]?.enabled).toBe(true);
   });
 
   it('rejects invalid tier values', async () => {

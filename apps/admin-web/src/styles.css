@@ -409,6 +409,36 @@ pre {
   min-height: 48px;
 }
 
+.promoter-type-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.promoter-type-card.is-disabled {
+  opacity: 0.7;
+}
+
+.promoter-type-header,
+.promoter-tier-toolbar {
+  display: grid;
+  grid-template-columns: 140px minmax(220px, 1fr) 110px;
+  gap: 12px;
+  align-items: end;
+}
+
+.promoter-type-key-field {
+  width: 100%;
+}
+
+.promoter-tier-row {
+  grid-template-columns: 90px minmax(120px, 160px) minmax(140px, 1fr) 110px;
+}
+
 .empty-state-inline {
   padding: 16px;
   border-radius: 16px;
@@ -434,7 +464,10 @@ pre {
   }
 
   .reward-editor-meta-grid,
-  .reward-tier-row {
+  .reward-tier-row,
+  .promoter-type-header,
+  .promoter-tier-toolbar,
+  .promoter-tier-row {
     grid-template-columns: 1fr;
   }
 }

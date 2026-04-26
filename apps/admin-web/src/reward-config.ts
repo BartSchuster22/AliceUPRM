@@ -4,6 +4,7 @@ export interface RewardConfigTier {
   depth: number;
   type: RewardTierType;
   value: string;
+  enabled: boolean;
 }
 
 export interface RewardConfigRecord {
@@ -42,7 +43,7 @@ export function toRewardConfigDraft(raw: unknown): RewardConfigDraft {
     depth: index + 1,
     type: tier.type === 'flat' ? 'flat' : 'percent',
     value: typeof tier.value === 'string' && tier.value.trim() ? tier.value : '0',
-    enabled: true,
+    enabled: tier.enabled !== false,
   }));
 
   return {
@@ -124,18 +125,12 @@ export function setTierEnabled(
 }
 
 function getSerializedTiers(tiers: RewardTierDraft[]): RewardConfigTier[] {
-  const serialized: RewardConfigTier[] = [];
-
-  for (const tier of reindexTiers(tiers)) {
-    if (!tier.enabled) break;
-    serialized.push({
-      depth: tier.depth,
-      type: tier.type,
-      value: tier.value,
-    });
-  }
-
-  return serialized;
+  return reindexTiers(tiers).map((tier) => ({
+    depth: tier.depth,
+    type: tier.type,
+    value: tier.value,
+    enabled: tier.enabled,
+  }));
 }
 
 function reindexTiers(tiers: RewardTierDraft[]): RewardTierDraft[] {
