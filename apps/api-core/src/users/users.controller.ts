@@ -10,7 +10,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { PayoutService } from '@uprm/payouts';
+import { PayoutError, PayoutService } from '@uprm/payouts';
 import { FIXED_REWARD_CURRENCY } from '@uprm/rewards';
 import { TenantService } from '@uprm/tenants';
 import { IdentityError, IdentityService } from '@uprm/identity';
@@ -175,15 +175,25 @@ export class UsersController {
     @Req() req: any,
   ) {
     const tenantId: string = req.uprm.tenantId;
-    const payout = await this.payoutSvc.requestPayout({
-      tenantId,
-      tenantUserId: id,
-      amountMinor: BigInt(dto.amountMinor),
-      payoutMethod: dto.payoutMethod,
-      destination: dto.destination,
-      destinationCurrency: dto.destinationCurrency,
-    });
-    return mapPayout(payout);
+    try {
+      const payout = await this.payoutSvc.requestPayout({
+        tenantId,
+        tenantUserId: id,
+        amountMinor: BigInt(dto.amountMinor),
+        payoutMethod: dto.payoutMethod,
+        destination: dto.destination,
+        destinationCurrency: dto.destinationCurrency,
+      });
+      return mapPayout(payout);
+    } catch (error) {
+      if (error instanceof PayoutError) {
+        throw new BadRequestException({
+          code: error.code,
+          message: error.message,
+        });
+      }
+      throw error;
+    }
   }
 
   @Get(':id/payouts')

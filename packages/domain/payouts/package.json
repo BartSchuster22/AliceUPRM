@@ -12,7 +12,8 @@
   "dependencies": {
     "@uprm/db": "workspace:*",
     "@uprm/ledger": "workspace:*",
-    "@uprm/rewards": "workspace:*"
+    "@uprm/rewards": "workspace:*",
+    "@uprm/wallet": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

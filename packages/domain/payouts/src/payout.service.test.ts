@@ -14,6 +14,11 @@ describe('PayoutService', () => {
         findUnique: vi.fn(),
         update: vi.fn(),
       },
+      walletPayoutReservation: {
+        create: vi.fn(),
+        update: vi.fn(),
+        findFirst: vi.fn(),
+      },
       tenantUser: {
         findFirst: vi.fn(),
       },
@@ -24,27 +29,64 @@ describe('PayoutService', () => {
     svc = new PayoutService(db);
   });
 
-  it('creates a payout request and reserves balance into payout_payable', async () => {
-    db.tenantUser.findFirst.mockResolvedValue({ id: 'tu-1' });
+  it('creates a payout request and reserves funds from the global wallet', async () => {
+    db.tenantUser.findFirst.mockResolvedValue({
+      id: 'tu-1',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+    });
     db.tenant.findUnique.mockResolvedValue({ id: 'tenant-1', baseCurrency: 'EUR' });
     db.payoutRequest.create.mockResolvedValue({
       id: 'po-1',
       tenantId: 'tenant-1',
       tenantUserId: 'tu-1',
+      userId: 'user-1',
+      walletAccountId: 'wa-1',
       amountMinor: 250n,
+      amountCredits: 250n,
       baseCurrency: FIXED_REWARD_CURRENCY,
       destinationCurrency: 'USD',
       payoutMethod: 'bank_transfer',
       destination: { iban: 'DE123' },
       status: 'requested',
     });
+    db.payoutRequest.update.mockResolvedValue({
+      id: 'po-1',
+      tenantId: 'tenant-1',
+      tenantUserId: 'tu-1',
+      userId: 'user-1',
+      walletAccountId: 'wa-1',
+      amountMinor: 250n,
+      amountCredits: 250n,
+      baseCurrency: FIXED_REWARD_CURRENCY,
+      destinationCurrency: 'USD',
+      payoutMethod: 'bank_transfer',
+      destination: { iban: 'DE123' },
+      issuerBreakdownJson: [
+        { issuerTenantId: 'tenant-1', walletGrantId: 'g1', amountCredits: '250' },
+      ],
+      status: 'requested',
+    });
+    db.walletPayoutReservation.update.mockResolvedValue({ id: 'wpr-1' });
 
-    (svc as any).balances = {
-      getUserBalance: vi.fn().mockResolvedValue({ balance: -500n }),
+    (svc as any).walletAccounts = {
+      ensureAccount: vi.fn().mockResolvedValue({ id: 'wa-1', userId: 'user-1' }),
+    };
+    (svc as any).walletBalances = {
+      getWalletBalance: vi.fn().mockResolvedValue({
+        walletAccountId: 'wa-1',
+        currency: 'credit',
+        balanceCredits: 500n,
+      }),
+    };
+    (svc as any).walletPayouts = {
+      reservePayout: vi.fn().mockResolvedValue({
+        reservation: { id: 'wpr-1', payoutRequestId: 'po-1', status: 'reserved' },
+        allocations: [{ walletGrantId: 'g1', issuerTenantId: 'tenant-1', amountCredits: 250n }],
+      }),
     };
     (svc as any).accounts = {
       ensureSystemAccount: vi.fn().mockResolvedValue({ id: 'payable-account' }),
-      ensureUserBalanceAccount: vi.fn().mockResolvedValue({ id: 'user-balance-account' }),
     };
     (svc as any).postings = {
       postEntry: vi.fn().mockResolvedValue({ id: 'entry-1', duplicate: false }),
@@ -59,26 +101,46 @@ describe('PayoutService', () => {
       destinationCurrency: 'USD',
     });
 
-    expect((svc as any).postings.postEntry).toHaveBeenCalledWith({
-      tenantId: 'tenant-1',
-      currency: FIXED_REWARD_CURRENCY,
-      description: 'Reserve payout request po-1',
-      idempotencyKey: 'payout-request:po-1',
-      sourceEventId: undefined,
-      postings: [
-        { accountId: 'payable-account', amount: -250n },
-        { accountId: expect.any(String), amount: 250n },
-      ],
+    expect((svc as any).walletAccounts.ensureAccount).toHaveBeenCalledWith({
+      userId: 'user-1',
+    });
+    expect((svc as any).walletBalances.getWalletBalance).toHaveBeenCalledWith('wa-1');
+    expect(db.payoutRequest.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tenantId: 'tenant-1',
+        tenantUserId: 'tu-1',
+        userId: 'user-1',
+        walletAccountId: 'wa-1',
+        amountMinor: 250n,
+        amountCredits: 250n,
+        baseCurrency: FIXED_REWARD_CURRENCY,
+      }),
+    });
+    expect((svc as any).walletPayouts.reservePayout).toHaveBeenCalledWith({
+      walletAccountId: 'wa-1',
+      payoutRequestId: 'po-1',
+      amountCredits: 250n,
     });
     expect(result.status).toBe('requested');
-    expect(result.baseCurrency).toBe(FIXED_REWARD_CURRENCY);
+    expect(result.walletAccountId).toBe('wa-1');
   });
 
-  it('rejects payout requests that exceed available balance', async () => {
-    db.tenantUser.findFirst.mockResolvedValue({ id: 'tu-1' });
+  it('rejects payout requests that exceed available wallet balance', async () => {
+    db.tenantUser.findFirst.mockResolvedValue({
+      id: 'tu-1',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+    });
     db.tenant.findUnique.mockResolvedValue({ id: 'tenant-1', baseCurrency: 'EUR' });
-    (svc as any).balances = {
-      getUserBalance: vi.fn().mockResolvedValue({ balance: -100n }),
+    (svc as any).walletAccounts = {
+      ensureAccount: vi.fn().mockResolvedValue({ id: 'wa-1', userId: 'user-1' }),
+    };
+    (svc as any).walletBalances = {
+      getWalletBalance: vi.fn().mockResolvedValue({
+        walletAccountId: 'wa-1',
+        currency: 'credit',
+        balanceCredits: 100n,
+      }),
     };
 
     await expect(
@@ -92,16 +154,24 @@ describe('PayoutService', () => {
     ).rejects.toMatchObject({ code: 'INSUFFICIENT_BALANCE' });
   });
 
-  it('marks an approved payout as sent and moves payable into tenant_cash', async () => {
+  it('marks an approved payout as sent and marks the wallet reservation sent', async () => {
     db.payoutRequest.findUnique.mockResolvedValue({
       id: 'po-2',
       tenantId: 'tenant-1',
       tenantUserId: 'tu-1',
+      walletAccountId: 'wa-1',
       amountMinor: 250n,
+      amountCredits: 250n,
       baseCurrency: 'EUR',
       status: 'approved',
     });
+    db.walletPayoutReservation = {
+      findFirst: vi.fn().mockResolvedValue({ id: 'wpr-2' }),
+    };
     db.payoutRequest.update.mockResolvedValue({ id: 'po-2', status: 'sent' });
+    (svc as any).walletPayouts = {
+      markSent: vi.fn().mockResolvedValue({ id: 'wpr-2', status: 'sent' }),
+    };
     (svc as any).accounts = {
       ensureSystemAccount: vi.fn().mockImplementation(({ accountType }: any) => {
         if (accountType === 'tenant_cash') return Promise.resolve({ id: 'cash-account' });
@@ -114,6 +184,7 @@ describe('PayoutService', () => {
 
     const result = await svc.markSent('po-2');
 
+    expect((svc as any).walletPayouts.markSent).toHaveBeenCalledWith('wpr-2');
     expect((svc as any).postings.postEntry).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
       currency: 'EUR',
@@ -128,60 +199,53 @@ describe('PayoutService', () => {
     expect(result.status).toBe('sent');
   });
 
-  it('fails a requested payout and releases funds back to user_balance', async () => {
+  it('fails a requested payout and releases wallet reservation funds back to grants', async () => {
     db.payoutRequest.findUnique.mockResolvedValue({
       id: 'po-3',
       tenantId: 'tenant-1',
       tenantUserId: 'tu-1',
+      walletAccountId: 'wa-1',
       amountMinor: 250n,
+      amountCredits: 250n,
       baseCurrency: 'EUR',
       status: 'requested',
     });
-    db.payoutRequest.update.mockResolvedValue({ id: 'po-3', status: 'failed' });
-    (svc as any).accounts = {
-      ensureSystemAccount: vi.fn().mockResolvedValue({ id: 'payable-account' }),
-      ensureUserBalanceAccount: vi.fn().mockResolvedValue({ id: 'user-balance-account' }),
+    db.walletPayoutReservation = {
+      findFirst: vi.fn().mockResolvedValue({ id: 'wpr-3' }),
     };
-    (svc as any).postings = {
-      postEntry: vi.fn().mockResolvedValue({ id: 'entry-3', duplicate: false }),
+    db.payoutRequest.update.mockResolvedValue({ id: 'po-3', status: 'failed' });
+    (svc as any).walletPayouts = {
+      releaseReservation: vi.fn().mockResolvedValue({ id: 'wpr-3', status: 'released' }),
     };
 
     const result = await svc.failPayout('po-3', 'bank rejected');
 
-    expect((svc as any).postings.postEntry).toHaveBeenCalledWith({
-      tenantId: 'tenant-1',
-      currency: 'EUR',
-      description: 'Release payout po-3',
-      idempotencyKey: 'payout-failed:po-3',
-      sourceEventId: undefined,
-      postings: [
-        { accountId: 'payable-account', amount: 250n },
-        { accountId: 'user-balance-account', amount: -250n },
-      ],
-    });
+    expect((svc as any).walletPayouts.releaseReservation).toHaveBeenCalledWith('wpr-3');
     expect(result.status).toBe('failed');
   });
 
-  it('cancels a requested payout and releases funds back to user_balance', async () => {
+  it('cancels a requested payout and releases wallet reservation funds back to grants', async () => {
     db.payoutRequest.findUnique.mockResolvedValue({
       id: 'po-4',
       tenantId: 'tenant-1',
       tenantUserId: 'tu-1',
+      walletAccountId: 'wa-1',
       amountMinor: 150n,
+      amountCredits: 150n,
       baseCurrency: 'EUR',
       status: 'requested',
     });
-    db.payoutRequest.update.mockResolvedValue({ id: 'po-4', status: 'cancelled' });
-    (svc as any).accounts = {
-      ensureSystemAccount: vi.fn().mockResolvedValue({ id: 'payable-account' }),
-      ensureUserBalanceAccount: vi.fn().mockResolvedValue({ id: 'user-balance-account' }),
+    db.walletPayoutReservation = {
+      findFirst: vi.fn().mockResolvedValue({ id: 'wpr-4' }),
     };
-    (svc as any).postings = {
-      postEntry: vi.fn().mockResolvedValue({ id: 'entry-4', duplicate: false }),
+    db.payoutRequest.update.mockResolvedValue({ id: 'po-4', status: 'cancelled' });
+    (svc as any).walletPayouts = {
+      releaseReservation: vi.fn().mockResolvedValue({ id: 'wpr-4', status: 'released' }),
     };
 
     const result = await svc.cancelPayout('po-4');
 
+    expect((svc as any).walletPayouts.releaseReservation).toHaveBeenCalledWith('wpr-4');
     expect(result.status).toBe('cancelled');
   });
 

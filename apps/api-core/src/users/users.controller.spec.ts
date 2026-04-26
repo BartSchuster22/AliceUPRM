@@ -1,5 +1,6 @@
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { FIXED_REWARD_CURRENCY } from '@uprm/rewards';
+import { PayoutError } from '@uprm/payouts';
 import { UsersController } from './users.controller';
 
 describe('UsersController balance, profile, subscriptions, promoter status, and payouts', () => {
@@ -361,6 +362,28 @@ describe('UsersController balance, profile, subscriptions, promoter status, and 
         status: 'requested',
       }),
     );
+  });
+
+  it('maps insufficient payout balance into a bad request error', async () => {
+    (controller as any).payoutSvc = {
+      requestPayout: jest
+        .fn()
+        .mockRejectedValue(
+          new PayoutError('insufficient balance', 'INSUFFICIENT_BALANCE'),
+        ),
+    };
+
+    await expect(
+      (controller as any).requestPayout(
+        'tu-alice',
+        {
+          amountMinor: 250,
+          payoutMethod: 'paypal',
+          destination: { email: 'alice@example.com' },
+        },
+        { uprm: { tenantId: 'tenant-1' } },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('lists payouts for a user', async () => {

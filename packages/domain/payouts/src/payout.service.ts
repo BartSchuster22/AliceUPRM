@@ -1,6 +1,7 @@
 import { prisma, PrismaClient } from '@uprm/db';
-import { AccountService, BalanceService, PostingService } from '@uprm/ledger';
+import { AccountService, PostingService } from '@uprm/ledger';
 import { FIXED_REWARD_CURRENCY } from '@uprm/rewards';
+import { WalletAccountService, WalletBalanceService, WalletPayoutService } from '@uprm/wallet';
 
 export class PayoutError extends Error {
   constructor(
@@ -23,13 +24,17 @@ export interface RequestPayoutInput {
 
 export class PayoutService {
   private readonly accounts: AccountService;
-  private readonly balances: BalanceService;
   private readonly postings: PostingService;
+  private readonly walletAccounts: WalletAccountService;
+  private readonly walletBalances: WalletBalanceService;
+  private readonly walletPayouts: WalletPayoutService;
 
   constructor(private db: PrismaClient = prisma) {
     this.accounts = new AccountService(db);
-    this.balances = new BalanceService(db);
     this.postings = new PostingService(db);
+    this.walletAccounts = new WalletAccountService(db);
+    this.walletBalances = new WalletBalanceService(db);
+    this.walletPayouts = new WalletPayoutService(db);
   }
 
   async requestPayout(input: RequestPayoutInput): Promise<any> {
@@ -46,13 +51,11 @@ export class PayoutService {
     if (!tenant) throw new PayoutError('tenant not found', 'TENANT_NOT_FOUND');
 
     const rewardCurrency = FIXED_REWARD_CURRENCY;
-    const userBalance = await this.balances.getUserBalance(
-      input.tenantId,
-      input.tenantUserId,
-      rewardCurrency,
-    );
-    const availableMinor = -(userBalance?.balance ?? 0n);
-    if (availableMinor < input.amountMinor) {
+    const walletAccount = await this.walletAccounts.ensureAccount({
+      userId: tenantUser.userId,
+    });
+    const walletBalance = await this.walletBalances.getWalletBalance(walletAccount.id);
+    if (walletBalance.balanceCredits < input.amountMinor) {
       throw new PayoutError('insufficient balance', 'INSUFFICIENT_BALANCE');
     }
 
@@ -60,7 +63,10 @@ export class PayoutService {
       data: {
         tenantId: input.tenantId,
         tenantUserId: input.tenantUserId,
+        userId: tenantUser.userId,
+        walletAccountId: walletAccount.id,
         amountMinor: input.amountMinor,
+        amountCredits: input.amountMinor,
         baseCurrency: rewardCurrency,
         destinationCurrency: input.destinationCurrency ?? null,
         payoutMethod: input.payoutMethod,
@@ -69,31 +75,31 @@ export class PayoutService {
       },
     });
 
-    const payable = await this.accounts.ensureSystemAccount({
-      tenantId: input.tenantId,
-      accountType: 'payout_payable',
-      currency: rewardCurrency,
-    });
-    const userBalanceAccount = userBalance?.accountId
-      ? { id: userBalance.accountId }
-      : await this.accounts.ensureUserBalanceAccount({
-          tenantId: input.tenantId,
-          tenantUserId: input.tenantUserId,
-          currency: rewardCurrency,
-        });
-
-    await this.postings.postEntry({
-      tenantId: input.tenantId,
-      currency: rewardCurrency,
-      description: `Reserve payout request ${payout.id}`,
-      idempotencyKey: `payout-request:${payout.id}`,
-      postings: [
-        { accountId: payable.id, amount: -input.amountMinor },
-        { accountId: userBalanceAccount.id, amount: input.amountMinor },
-      ],
+    const { reservation, allocations } = await this.walletPayouts.reservePayout({
+      walletAccountId: walletAccount.id,
+      payoutRequestId: payout.id,
+      amountCredits: input.amountMinor,
     });
 
-    return payout;
+    const issuerBreakdownJson = allocations.map((allocation) => ({
+      issuerTenantId: allocation.issuerTenantId ?? null,
+      walletGrantId: allocation.walletGrantId,
+      amountCredits: allocation.amountCredits.toString(),
+    }));
+
+    const updatedPayout = await this.db.payoutRequest.update({
+      where: { id: payout.id },
+      data: {
+        issuerBreakdownJson: issuerBreakdownJson as any,
+      },
+    });
+
+    await this.db.walletPayoutReservation.update({
+      where: { id: reservation.id },
+      data: { payoutRequestId: updatedPayout.id },
+    } as any);
+
+    return updatedPayout;
   }
 
   async listUserPayouts(tenantId: string, tenantUserId: string): Promise<any[]> {
@@ -123,6 +129,9 @@ export class PayoutService {
     if (payout.status !== 'approved') {
       throw new PayoutError('only approved payouts can be marked sent', 'BAD_STATUS');
     }
+
+    const reservation = await this.requireWalletReservation(payout.id);
+    await this.walletPayouts.markSent(reservation.id);
 
     const cash = await this.accounts.ensureSystemAccount({
       tenantId: payout.tenantId,
@@ -157,7 +166,8 @@ export class PayoutService {
     if (!['requested', 'approved'].includes(payout.status)) {
       throw new PayoutError('only requested or approved payouts can fail', 'BAD_STATUS');
     }
-    await this.releaseBackToUser(payout, 'failed');
+    const reservation = await this.requireWalletReservation(payout.id);
+    await this.walletPayouts.releaseReservation(reservation.id);
     return this.db.payoutRequest.update({
       where: { id: payoutId },
       data: { status: 'failed', failureReason: reason ?? null, failedAt: new Date() },
@@ -169,7 +179,8 @@ export class PayoutService {
     if (payout.status !== 'requested') {
       throw new PayoutError('only requested payouts can be cancelled', 'BAD_STATUS');
     }
-    await this.releaseBackToUser(payout, 'cancelled');
+    const reservation = await this.requireWalletReservation(payout.id);
+    await this.walletPayouts.releaseReservation(reservation.id);
     return this.db.payoutRequest.update({
       where: { id: payoutId },
       data: { status: 'cancelled', cancelledAt: new Date() },
@@ -198,6 +209,16 @@ export class PayoutService {
         { accountId: userBalance.id, amount: -payout.amountMinor },
       ],
     });
+  }
+
+  private async requireWalletReservation(payoutRequestId: string): Promise<any> {
+    const reservation = await this.db.walletPayoutReservation.findFirst({
+      where: { payoutRequestId },
+    } as any);
+    if (!reservation) {
+      throw new PayoutError('wallet payout reservation not found', 'WALLET_PAYOUT_NOT_FOUND');
+    }
+    return reservation;
   }
 
   private async requirePayout(payoutId: string): Promise<any> {

@@ -715,6 +715,9 @@ importers:
       '@uprm/rewards':
         specifier: workspace:*
         version: link:../rewards
+      '@uprm/wallet':
+        specifier: workspace:*
+        version: link:../wallet
     devDependencies:
       '@types/node':
         specifier: ^25.6.0
