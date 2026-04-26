@@ -3,6 +3,7 @@ import { prisma } from '@uprm/db';
 import { AccountService, BalanceService, PostingService } from '@uprm/ledger';
 import { PayoutService } from '@uprm/payouts';
 import { ReferralService } from '@uprm/referrals';
+import { WalletAccountService, WalletGrantService } from '@uprm/wallet';
 
 export class AdminUsersService {
   private readonly db = prisma;
@@ -11,6 +12,8 @@ export class AdminUsersService {
   private readonly postings = new PostingService(prisma);
   private readonly payouts = new PayoutService(prisma);
   private readonly referrals = new ReferralService(prisma);
+  private readonly walletAccounts = new WalletAccountService(prisma);
+  private readonly walletGrants = new WalletGrantService(prisma);
 
   async listUsers(input: { tenantId: string; q?: string; limit?: number }) {
     const query = input.q?.trim();
@@ -214,6 +217,19 @@ export class AdminUsersService {
       description,
       idempotencyKey: `manual-adjustment:${input.tenantUserId}:${randomUUID()}`,
       postings,
+    });
+
+    const walletAccount = await this.walletAccounts.ensureAccount({
+      userId: tenantUser.userId,
+    });
+    await this.walletGrants.recordDelta({
+      walletAccountId: walletAccount.id,
+      issuerTenantId: input.tenantId,
+      sourceTenantUserId: input.tenantUserId,
+      originType: 'manual_adjustment',
+      sourceReferenceType: 'manual_adjustment',
+      sourceReferenceId: result.id,
+      amountDelta: input.amountMinor,
     });
 
     return {

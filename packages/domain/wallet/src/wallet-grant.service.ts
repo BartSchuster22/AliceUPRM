@@ -26,6 +26,28 @@ export class WalletGrantService {
     } as any);
   }
 
+  async recordDelta(input: Omit<CreateWalletGrantInput, 'amountIssued'> & { amountDelta: bigint }) {
+    if (input.amountDelta === 0n) {
+      throw new Error('amountDelta must be non-zero');
+    }
+
+    return this.db.walletGrant.create({
+      data: {
+        walletAccountId: input.walletAccountId,
+        issuerTenantId: input.issuerTenantId ?? null,
+        sourceTenantUserId: input.sourceTenantUserId ?? null,
+        originType: input.originType,
+        sourceEventId: input.sourceEventId ?? null,
+        sourceReferenceType: input.sourceReferenceType ?? null,
+        sourceReferenceId: input.sourceReferenceId ?? null,
+        amountIssued: input.amountDelta,
+        amountRemaining: input.amountDelta,
+        fxQuoteId: input.fxQuoteId ?? null,
+        expiresAt: input.expiresAt ?? null,
+      },
+    } as any);
+  }
+
   async listAvailableGrants(walletAccountId: string) {
     return this.db.walletGrant.findMany({
       where: {

@@ -1,6 +1,7 @@
 import { prisma, PrismaClient } from '@uprm/db';
 import { AccountService, PostingService } from '@uprm/ledger';
 import { FraudService } from '@uprm/fraud';
+import { WalletAccountService, WalletGrantService } from '@uprm/wallet';
 import { WebhookDeliveryService } from '@uprm/webhooks';
 import type { ComputedReward, TriggerEvent } from './reward.service';
 
@@ -38,12 +39,16 @@ export class ScheduledPostingService {
   private readonly postings: PostingService;
   private readonly fraud: FraudService;
   private readonly webhooks: WebhookDeliveryService;
+  private readonly walletAccounts: WalletAccountService;
+  private readonly walletGrants: WalletGrantService;
 
   constructor(private db: PrismaClient = prisma) {
     this.accounts = new AccountService(db);
     this.postings = new PostingService(db);
     this.fraud = new FraudService(db);
     this.webhooks = new WebhookDeliveryService(db);
+    this.walletAccounts = new WalletAccountService(db);
+    this.walletGrants = new WalletGrantService(db);
   }
 
   /**
@@ -169,6 +174,7 @@ export class ScheduledPostingService {
           data: { status: 'posted', resultEntryId: result.id },
         });
         if (!result.duplicate) {
+          await this.recordWalletGrantForPostedReward(row);
           await this.enqueueEvent(
             'reward.approved',
             row.tenantId,
@@ -270,6 +276,7 @@ export class ScheduledPostingService {
 
       if (result.duplicate) skipped++;
       else {
+        await this.recordWalletDeltaForRewardReversal(row, entry);
         await this.enqueueEvent(
           'refund.reversed',
           input.tenantId,
@@ -298,6 +305,66 @@ export class ScheduledPostingService {
     }
 
     return { linked: true, cancelled, reversed, skipped };
+  }
+
+  private async recordWalletGrantForPostedReward(row: any) {
+    const beneficiaryTenantUserId =
+      row.beneficiaryTenantUserId ?? row.payload?.beneficiaryTenantUserId;
+    if (!beneficiaryTenantUserId) return;
+
+    const tenantUser = await this.db.tenantUser.findFirst({
+      where: { id: beneficiaryTenantUserId, tenantId: row.tenantId },
+    });
+    if (!tenantUser?.userId) return;
+
+    const walletAccount = await this.walletAccounts.ensureAccount({ userId: tenantUser.userId });
+    const payload = row.payload as any;
+    const userPosting = Array.isArray(payload?.postings)
+      ? payload.postings.find((posting: any) => String(posting.amount ?? '').startsWith('-'))
+      : null;
+    const amount = BigInt(String(userPosting?.amount ?? 0));
+    const credits = amount < 0n ? -amount : amount;
+    if (credits <= 0n) return;
+
+    await this.walletGrants.createGrant({
+      walletAccountId: walletAccount.id,
+      issuerTenantId: row.tenantId,
+      sourceTenantUserId: beneficiaryTenantUserId,
+      originType: 'reward',
+      sourceEventId: row.sourceEventId ?? null,
+      sourceReferenceType: 'scheduled_posting',
+      sourceReferenceId: row.id,
+      amountIssued: credits,
+    });
+  }
+
+  private async recordWalletDeltaForRewardReversal(row: any, entry: any) {
+    const beneficiaryTenantUserId =
+      row.beneficiaryTenantUserId ?? row.payload?.beneficiaryTenantUserId;
+    if (!beneficiaryTenantUserId) return;
+
+    const tenantUser = await this.db.tenantUser.findFirst({
+      where: { id: beneficiaryTenantUserId, tenantId: row.tenantId },
+    });
+    if (!tenantUser?.userId) return;
+
+    const walletAccount = await this.walletAccounts.ensureAccount({ userId: tenantUser.userId });
+    const postings = await this.db.ledgerPosting.findMany({ where: { entryId: entry.id } });
+    const userAmount = postings
+      .map((posting: any) => BigInt(String(posting.amount ?? 0)))
+      .find((value: bigint) => value < 0n);
+    if (!userAmount) return;
+
+    await this.walletGrants.recordDelta({
+      walletAccountId: walletAccount.id,
+      issuerTenantId: row.tenantId,
+      sourceTenantUserId: beneficiaryTenantUserId,
+      originType: 'reward_reversal',
+      sourceEventId: row.sourceEventId ?? null,
+      sourceReferenceType: 'scheduled_posting_reversal',
+      sourceReferenceId: row.id,
+      amountDelta: userAmount,
+    });
   }
 
   private async enqueueEvent(

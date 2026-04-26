@@ -37,6 +37,7 @@
     "@uprm/rewards": "workspace:*",
     "@uprm/settlements": "workspace:*",
     "@uprm/tenants": "workspace:*",
+    "@uprm/wallet": "workspace:*",
     "@uprm/webhooks": "workspace:*",
     "bcryptjs": "^3.0.2",
     "class-transformer": "^0.5.1",

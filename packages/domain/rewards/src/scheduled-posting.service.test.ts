@@ -39,6 +39,18 @@ describe('ScheduledPostingService compensating events', () => {
       rewardHold: {
         findFirst: vi.fn().mockResolvedValue(null),
       },
+      tenantUser: {
+        findFirst: vi.fn(),
+      },
+      walletAccount: {
+        findFirst: vi.fn(),
+        create: vi.fn(),
+      },
+      walletGrant: {
+        create: vi.fn(),
+        findMany: vi.fn(),
+        update: vi.fn(),
+      },
     };
     svc = new ScheduledPostingService(db);
   });
@@ -113,6 +125,7 @@ describe('ScheduledPostingService compensating events', () => {
       {
         id: 'sp-due-3',
         tenantId: 'tenant-1',
+        beneficiaryTenantUserId: 'referrer-1',
         sourceEventId: 'source-evt-3',
         payload: {
           currency: 'EUR',
@@ -138,10 +151,24 @@ describe('ScheduledPostingService compensating events', () => {
 
     const postEntry = vi.fn().mockResolvedValue({ id: 'entry-3', duplicate: false });
     (svc as any).postings = { postEntry };
+    db.tenantUser.findFirst.mockResolvedValue({ id: 'referrer-1', userId: 'user-1' });
+    (svc as any).walletAccounts = { ensureAccount: vi.fn().mockResolvedValue({ id: 'wa-1' }) };
+    (svc as any).walletGrants = { createGrant: vi.fn() };
 
     const result = await svc.postDueRewards(new Date('2026-04-24T15:00:00.000Z'));
 
     expect(result).toEqual({ posted: 1, held: 0 });
+    expect((svc as any).walletAccounts.ensureAccount).toHaveBeenCalledWith({ userId: 'user-1' });
+    expect((svc as any).walletGrants.createGrant).toHaveBeenCalledWith({
+      walletAccountId: 'wa-1',
+      issuerTenantId: 'tenant-1',
+      sourceTenantUserId: 'referrer-1',
+      originType: 'reward',
+      sourceEventId: 'source-evt-3',
+      sourceReferenceType: 'scheduled_posting',
+      sourceReferenceId: 'sp-due-3',
+      amountIssued: 299n,
+    });
     expect(db.webhookDelivery.create).toHaveBeenCalledTimes(2);
     const eventTypes = db.webhookDelivery.create.mock.calls
       .map((call: any[]) => call[0].data.eventType)
@@ -194,6 +221,7 @@ describe('ScheduledPostingService compensating events', () => {
       {
         id: 'sp-1',
         tenantId: 'tenant-1',
+        beneficiaryTenantUserId: 'referrer-1',
         sourceEventId: 'source-evt-2',
         resultEntryId: 'entry-1',
         status: 'posted',
@@ -221,6 +249,9 @@ describe('ScheduledPostingService compensating events', () => {
 
     const postEntry = vi.fn().mockResolvedValue({ id: 'reversal-1', duplicate: false });
     (svc as any).postings = { postEntry };
+    db.tenantUser.findFirst.mockResolvedValue({ id: 'referrer-1', userId: 'user-1' });
+    (svc as any).walletAccounts = { ensureAccount: vi.fn().mockResolvedValue({ id: 'wa-1' }) };
+    (svc as any).walletGrants = { recordDelta: vi.fn() };
 
     const result = await (svc as any).compensateForLinkedEvent({
       tenantId: 'tenant-1',
@@ -240,6 +271,17 @@ describe('ScheduledPostingService compensating events', () => {
       ],
     });
     expect(db.webhookDelivery.create).toHaveBeenCalledTimes(2);
+    expect((svc as any).walletAccounts.ensureAccount).toHaveBeenCalledWith({ userId: 'user-1' });
+    expect((svc as any).walletGrants.recordDelta).toHaveBeenCalledWith({
+      walletAccountId: 'wa-1',
+      issuerTenantId: 'tenant-1',
+      sourceTenantUserId: 'referrer-1',
+      originType: 'reward_reversal',
+      sourceEventId: 'source-evt-2',
+      sourceReferenceType: 'scheduled_posting_reversal',
+      sourceReferenceId: 'sp-1',
+      amountDelta: -299n,
+    });
     expect(result).toEqual({
       linked: true,
       cancelled: 0,

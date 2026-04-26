@@ -45,4 +45,25 @@ describe('WalletGrantService', () => {
       }),
     ).rejects.toThrow('amountIssued must be positive');
   });
+
+  it('records a negative delta for compensating adjustments', async () => {
+    db.walletGrant.create.mockResolvedValue({ id: 'wg-neg-1', amountRemaining: -250n });
+
+    await svc.recordDelta({
+      walletAccountId: 'wa-1',
+      issuerTenantId: 'tenant-1',
+      originType: 'reward_reversal',
+      amountDelta: -250n,
+    });
+
+    expect(db.walletGrant.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        walletAccountId: 'wa-1',
+        issuerTenantId: 'tenant-1',
+        originType: 'reward_reversal',
+        amountIssued: -250n,
+        amountRemaining: -250n,
+      }),
+    });
+  });
 });
