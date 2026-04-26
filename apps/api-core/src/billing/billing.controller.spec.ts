@@ -169,14 +169,18 @@ describe('BillingController checkout sessions', () => {
       uprm: { tenantId: 'tenant-1' },
     });
 
-    expect((controller as any).billingCredits.prepareCheckout).toHaveBeenCalledWith({
+    expect(
+      (controller as any).billingCredits.prepareCheckout,
+    ).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
       externalUserId: 'psi-user-1',
       amountMinor: 4900,
       applyCredits: true,
       creditsToUse: 1200,
     });
-    expect((controller as any).payments.createCheckoutSession).toHaveBeenCalledWith({
+    expect(
+      (controller as any).payments.createCheckoutSession,
+    ).toHaveBeenCalledWith({
       externalUserId: 'psi-user-1',
       plan: 'product_monthly',
       productName: 'PSI Agent Monthly',
@@ -195,6 +199,33 @@ describe('BillingController checkout sessions', () => {
     expect(result).toEqual({
       sessionId: 'cs_test_credits',
       url: 'https://checkout.stripe.com/pay/cs_test_credits',
+      walletRedemptionId: 'wr-1',
+      appliedCredits: 1200,
+    });
+  });
+
+  it('releases a reserved checkout wallet redemption through the billing API', async () => {
+    (controller as any).billingCredits = {
+      releaseCheckoutReservation: jest
+        .fn()
+        .mockResolvedValue({ walletRedemptionId: 'wr-1', status: 'released' }),
+    };
+
+    await expect(
+      (controller as any).releaseCheckoutReservation(
+        { walletRedemptionId: 'wr-1' },
+        { uprm: { tenantId: 'tenant-1' } },
+      ),
+    ).resolves.toEqual({
+      walletRedemptionId: 'wr-1',
+      status: 'released',
+    });
+
+    expect(
+      (controller as any).billingCredits.releaseCheckoutReservation,
+    ).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      walletRedemptionId: 'wr-1',
     });
   });
 
@@ -236,7 +267,9 @@ describe('BillingController checkout sessions', () => {
         { uprm: { tenantId: 'tenant-1' } },
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect((controller as any).payments.createCheckoutSession).not.toHaveBeenCalled();
+    expect(
+      (controller as any).payments.createCheckoutSession,
+    ).not.toHaveBeenCalled();
   });
 
   it('returns bad request when requested credits exceed the available spendable balance', async () => {
@@ -253,7 +286,9 @@ describe('BillingController checkout sessions', () => {
     (controller as any).billingCredits = {
       prepareCheckout: jest
         .fn()
-        .mockRejectedValue(new BadRequestException('insufficient credit balance')),
+        .mockRejectedValue(
+          new BadRequestException('insufficient credit balance'),
+        ),
     };
     (controller as any).payments = {
       createCheckoutSession: jest.fn(),
@@ -277,7 +312,9 @@ describe('BillingController checkout sessions', () => {
         { uprm: { tenantId: 'tenant-1' } },
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect((controller as any).payments.createCheckoutSession).not.toHaveBeenCalled();
+    expect(
+      (controller as any).payments.createCheckoutSession,
+    ).not.toHaveBeenCalled();
   });
 
   it('returns a conflict when stripe checkout provider is not configured', async () => {

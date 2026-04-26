@@ -42,14 +42,27 @@ export class StripeWebhooksController {
       ? req.rawBody
       : Buffer.from(JSON.stringify(req.body ?? {}));
 
-    let normalized;
+    let normalizedResult;
     try {
-      normalized = await this.payments.constructAndNormalize({
-        rawBody,
-        signature,
-        webhookSecret: stripeConfig.webhookSecret,
-        tenantId,
-      });
+      const paymentsAny = this.payments as any;
+      if (typeof paymentsAny.constructAndNormalizeWithEvent === 'function') {
+        normalizedResult = await paymentsAny.constructAndNormalizeWithEvent({
+          rawBody,
+          signature,
+          webhookSecret: stripeConfig.webhookSecret,
+          tenantId,
+        });
+      } else {
+        normalizedResult = {
+          event: null,
+          normalized: await paymentsAny.constructAndNormalize({
+            rawBody,
+            signature,
+            webhookSecret: stripeConfig.webhookSecret,
+            tenantId,
+          }),
+        };
+      }
     } catch (error: any) {
       if (error?.type === 'StripeSignatureVerificationError') {
         throw new BadRequestException('invalid stripe signature');
@@ -57,18 +70,29 @@ export class StripeWebhooksController {
       throw error;
     }
 
-    if (!normalized) {
+    const lifecycle = extractWalletRedemptionLifecycle(normalizedResult.event);
+    if (!normalizedResult.normalized) {
+      if (lifecycle?.action === 'release') {
+        await this.walletRedemptions.releaseRedemption(
+          lifecycle.walletRedemptionId,
+        );
+        return {
+          ignored: false,
+          released: true,
+          walletRedemptionId: lifecycle.walletRedemptionId,
+        };
+      }
+
       return { ignored: true };
     }
 
     const result = await this.events.ingest({
       tenantId,
-      body: normalized,
+      body: normalizedResult.normalized,
     });
 
-    const walletRedemptionId = this.extractWalletRedemptionId(normalized);
-    if (walletRedemptionId) {
-      await this.walletRedemptions.markPosted(walletRedemptionId);
+    if (lifecycle?.action === 'mark_posted') {
+      await this.walletRedemptions.markPosted(lifecycle.walletRedemptionId);
     }
 
     return {
@@ -78,16 +102,26 @@ export class StripeWebhooksController {
       ignored: false,
     };
   }
+}
 
-  private extractWalletRedemptionId(normalized: any): string | null {
-    const metadata = normalized?.metadata;
-    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
-      return null;
-    }
-
-    const walletRedemptionId = (metadata as Record<string, unknown>).walletRedemptionId;
-    return typeof walletRedemptionId === 'string' && walletRedemptionId.length > 0
-      ? walletRedemptionId
-      : null;
+function extractWalletRedemptionLifecycle(
+  event: any,
+): { walletRedemptionId: string; action: 'mark_posted' | 'release' } | null {
+  const walletRedemptionId = event?.data?.object?.metadata?.walletRedemptionId;
+  if (
+    typeof walletRedemptionId !== 'string' ||
+    walletRedemptionId.length === 0
+  ) {
+    return null;
   }
+
+  if (event?.type === 'checkout.session.completed') {
+    return { walletRedemptionId, action: 'mark_posted' };
+  }
+
+  if (event?.type === 'checkout.session.expired') {
+    return { walletRedemptionId, action: 'release' };
+  }
+
+  return null;
 }

@@ -141,6 +141,13 @@ export class StripeCheckoutService {
   }
 }
 
+export type WalletRedemptionLifecycleAction = 'mark_posted' | 'release';
+
+export interface WalletRedemptionLifecycle {
+  walletRedemptionId: string;
+  action: WalletRedemptionLifecycleAction;
+}
+
 export class StripeWebhookService {
   constructor(
     private readonly db: PrismaClient = prisma,
@@ -153,6 +160,16 @@ export class StripeWebhookService {
     webhookSecret: string;
     tenantId: string;
   }): Promise<EventPayload | null> {
+    const { normalized } = await this.constructAndNormalizeWithEvent(input);
+    return normalized;
+  }
+
+  async constructAndNormalizeWithEvent(input: {
+    rawBody: Buffer;
+    signature: string;
+    webhookSecret: string;
+    tenantId: string;
+  }): Promise<{ event: Stripe.Event; normalized: EventPayload | null }> {
     const stripe = this.stripeFactory();
     const event = stripe.webhooks.constructEvent(
       input.rawBody,
@@ -160,7 +177,8 @@ export class StripeWebhookService {
       input.webhookSecret,
     );
 
-    return this.normalizeForTenant(event, input.tenantId, stripe);
+    const normalized = await this.normalizeForTenant(event, input.tenantId, stripe);
+    return { event, normalized };
   }
 
   normalize(event: Stripe.Event): EventPayload | null {
@@ -579,6 +597,27 @@ function buildWalletCheckoutMetadata(metadata?: Record<string, string> | null) {
     ...(tenantUserId ? { tenantUserId } : {}),
     ...(userId ? { userId } : {}),
   };
+}
+
+export function extractWalletRedemptionLifecycle(
+  event: Stripe.Event,
+): WalletRedemptionLifecycle | null {
+  const object = event.data.object as { metadata?: Record<string, string> | null };
+  const walletRedemptionId = object?.metadata?.walletRedemptionId;
+
+  if (!walletRedemptionId) {
+    return null;
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    return { walletRedemptionId, action: 'mark_posted' };
+  }
+
+  if (event.type === 'checkout.session.expired') {
+    return { walletRedemptionId, action: 'release' };
+  }
+
+  return null;
 }
 
 function formatMinorUnits(amountMinor: number): string {

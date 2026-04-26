@@ -53,4 +53,47 @@ describe('WalletRedemptionService', () => {
       { walletGrantId: 'g1', issuerTenantId: 'tenant-1', amountCredits: 300n },
     ]);
   });
+
+  it('releases a reserved redemption only once and restores grant balance', async () => {
+    db.walletRedemption.findUnique = vi
+      .fn()
+      .mockResolvedValueOnce({ id: 'wr-1', status: 'reserved' })
+      .mockResolvedValueOnce({ id: 'wr-1', status: 'released' });
+    db.walletRedemptionAllocation.findMany.mockResolvedValue([
+      {
+        redemptionId: 'wr-1',
+        walletGrantId: 'g1',
+        amountCredits: 300n,
+      },
+    ]);
+    db.walletRedemption.update.mockResolvedValue({ id: 'wr-1', status: 'released' });
+
+    await expect(svc.releaseRedemption('wr-1')).resolves.toEqual({
+      id: 'wr-1',
+      status: 'released',
+    });
+    await expect(svc.releaseRedemption('wr-1')).resolves.toEqual({
+      id: 'wr-1',
+      status: 'released',
+    });
+
+    expect(db.walletGrant.update).toHaveBeenCalledTimes(1);
+    expect(db.walletGrant.update).toHaveBeenCalledWith({
+      where: { id: 'g1' },
+      data: {
+        amountRemaining: { increment: 300n },
+      },
+    });
+    expect(db.walletRedemption.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not release grant balance for an already posted redemption', async () => {
+    db.walletRedemption.findUnique = vi.fn().mockResolvedValue({ id: 'wr-1', status: 'posted' });
+
+    await expect(svc.releaseRedemption('wr-1')).resolves.toEqual({ id: 'wr-1', status: 'posted' });
+
+    expect(db.walletRedemptionAllocation.findMany).not.toHaveBeenCalled();
+    expect(db.walletGrant.update).not.toHaveBeenCalled();
+    expect(db.walletRedemption.update).not.toHaveBeenCalled();
+  });
 });

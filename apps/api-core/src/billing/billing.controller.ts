@@ -1,10 +1,10 @@
 import {
   BadRequestException,
+  Body,
   ConflictException,
   Controller,
   NotFoundException,
   Post,
-  Body,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -13,6 +13,7 @@ import { TenantService } from '@uprm/tenants';
 import { HmacAuthGuard } from '../auth/hmac-auth.guard';
 import { BillingCreditService } from './billing-credit.service';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
+import { ReleaseCheckoutReservationDto } from './dto/release-checkout-reservation.dto';
 
 @Controller('v1/billing')
 @UseGuards(HmacAuthGuard)
@@ -118,6 +119,15 @@ export class BillingController {
           : {}),
         ...(billingCredits.userId ? { userId: billingCredits.userId } : {}),
       })
+      .then((session) => ({
+        ...session,
+        ...(billingCredits.walletRedemptionId
+          ? { walletRedemptionId: billingCredits.walletRedemptionId }
+          : {}),
+        ...(billingCredits.appliedCredits !== undefined
+          ? { appliedCredits: billingCredits.appliedCredits }
+          : {}),
+      }))
       .catch((error: Error) => {
         if (error.message === 'STRIPE_SECRET_KEY is required') {
           throw new ConflictException(
@@ -126,5 +136,16 @@ export class BillingController {
         }
         throw error;
       });
+  }
+
+  @Post('checkout-sessions/release')
+  async releaseCheckoutReservation(
+    @Body() dto: ReleaseCheckoutReservationDto,
+    @Req() req: any,
+  ) {
+    return this.billingCredits.releaseCheckoutReservation({
+      tenantId: req.uprm.tenantId,
+      walletRedemptionId: dto.walletRedemptionId,
+    });
   }
 }

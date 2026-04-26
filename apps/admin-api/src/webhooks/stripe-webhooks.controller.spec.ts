@@ -122,19 +122,32 @@ describe('StripeWebhooksController', () => {
       }),
     };
     (controller as any).payments = {
-      constructAndNormalize: jest.fn().mockResolvedValue({
-        eventType: 'subscription_started',
-        idempotencyKey: 'stripe:evt_checkout_1',
-        externalEventId: 'evt_checkout_1',
-        externalUserId: 'psi-user-1',
-        occurredAt: '2024-04-24T12:00:00.000Z',
-        subscriptionId: 'sub_123',
-        plan: 'psi-monthly',
-        amount: '37.00',
-        currency: 'EUR',
-        metadata: {
-          walletRedemptionId: 'wr-1',
-          appliedCredits: '1200',
+      constructAndNormalizeWithEvent: jest.fn().mockResolvedValue({
+        event: {
+          type: 'checkout.session.completed',
+          data: {
+            object: {
+              metadata: {
+                walletRedemptionId: 'wr-1',
+                appliedCredits: '1200',
+              },
+            },
+          },
+        },
+        normalized: {
+          eventType: 'subscription_started',
+          idempotencyKey: 'stripe:evt_checkout_1',
+          externalEventId: 'evt_checkout_1',
+          externalUserId: 'psi-user-1',
+          occurredAt: '2024-04-24T12:00:00.000Z',
+          subscriptionId: 'sub_123',
+          plan: 'psi-monthly',
+          amount: '37.00',
+          currency: 'EUR',
+          metadata: {
+            walletRedemptionId: 'wr-1',
+            appliedCredits: '1200',
+          },
         },
       }),
     };
@@ -154,12 +167,65 @@ describe('StripeWebhooksController', () => {
       rawBody: Buffer.from('{}'),
     } as any);
 
-    expect((controller as any).walletRedemptions.markPosted).toHaveBeenCalledWith('wr-1');
+    expect(
+      (controller as any).walletRedemptions.markPosted,
+    ).toHaveBeenCalledWith('wr-1');
     expect(result).toEqual({
       event_id: 'db-evt-credit-1',
       processing_status: 'accepted',
       duplicate: false,
       ignored: false,
+    });
+  });
+
+  it('releases a wallet redemption after a credit-backed checkout session expires', async () => {
+    (controller as any).tenants = {
+      getTenant: jest.fn().mockResolvedValue({
+        id: 'tenant-1',
+        config: {
+          webhookConfig: {
+            stripe: { enabled: true, webhookSecret: 'whsec_test' },
+          },
+        },
+      }),
+    };
+    (controller as any).payments = {
+      constructAndNormalizeWithEvent: jest.fn().mockResolvedValue({
+        event: {
+          type: 'checkout.session.expired',
+          data: {
+            object: {
+              metadata: {
+                walletRedemptionId: 'wr-expired-1',
+              },
+            },
+          },
+        },
+        normalized: null,
+      }),
+    };
+    (controller as any).events = {
+      ingest: jest.fn(),
+    };
+    (controller as any).walletRedemptions = {
+      releaseRedemption: jest
+        .fn()
+        .mockResolvedValue({ id: 'wr-expired-1', status: 'released' }),
+    };
+
+    const result = await controller.handle('tenant-1', {
+      headers: { 'stripe-signature': 'sig_test' },
+      rawBody: Buffer.from('{}'),
+    } as any);
+
+    expect((controller as any).events.ingest).not.toHaveBeenCalled();
+    expect(
+      (controller as any).walletRedemptions.releaseRedemption,
+    ).toHaveBeenCalledWith('wr-expired-1');
+    expect(result).toEqual({
+      ignored: false,
+      released: true,
+      walletRedemptionId: 'wr-expired-1',
     });
   });
 

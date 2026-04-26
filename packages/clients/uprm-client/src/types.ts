@@ -322,6 +322,8 @@ export type CreateCheckoutSessionInput =
       successUrl: string;
       cancelUrl: string;
       referralCodeUsed?: string;
+      applyCredits?: boolean;
+      creditsToUse?: number;
     }
   | {
       externalUserId: string;
@@ -334,9 +336,13 @@ export type CreateCheckoutSessionInput =
       successUrl: string;
       cancelUrl: string;
       referralCodeUsed?: string;
+      applyCredits?: boolean;
+      creditsToUse?: number;
     };
 
 export type CheckoutSession = {
   sessionId: string;
   url: string;
+  walletRedemptionId?: string;
+  appliedCredits?: number;
 };

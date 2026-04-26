@@ -48,6 +48,14 @@ export class WalletRedemptionService {
   }
 
   async markPosted(redemptionId: string) {
+    const redemption = await this.db.walletRedemption.findUnique({
+      where: { id: redemptionId },
+    } as any);
+
+    if (!redemption || redemption.status !== 'reserved') {
+      return redemption;
+    }
+
     return this.db.walletRedemption.update({
       where: { id: redemptionId },
       data: { status: 'posted', postedAt: new Date() },
@@ -55,6 +63,14 @@ export class WalletRedemptionService {
   }
 
   async releaseRedemption(redemptionId: string) {
+    const redemption = await this.db.walletRedemption.findUnique({
+      where: { id: redemptionId },
+    } as any);
+
+    if (!redemption || redemption.status !== 'reserved') {
+      return redemption;
+    }
+
     const allocations = await this.db.walletRedemptionAllocation.findMany({
       where: { redemptionId },
     } as any);

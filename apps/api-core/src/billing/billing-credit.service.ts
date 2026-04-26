@@ -22,6 +22,11 @@ interface PreparedBillingCheckout {
   userId?: string;
 }
 
+interface ReleaseCheckoutReservationInput {
+  tenantId: string;
+  walletRedemptionId: string;
+}
+
 export class BillingCreditService {
   private readonly identity = new IdentityService();
   private readonly walletAccounts = new WalletAccountService();
@@ -51,9 +56,15 @@ export class BillingCreditService {
     const walletAccount = await this.walletAccounts.ensureAccount({
       userId: tenantUser.user.id,
     });
-    const balance = await this.walletBalances.getWalletBalance(walletAccount.id);
+    const balance = await this.walletBalances.getWalletBalance(
+      walletAccount.id,
+    );
     const spendableCredits = Number(balance.balanceCredits ?? 0n);
-    const appliedCredits = Math.min(requestedCredits, spendableCredits, input.amountMinor);
+    const appliedCredits = Math.min(
+      requestedCredits,
+      spendableCredits,
+      input.amountMinor,
+    );
 
     if (appliedCredits <= 0) {
       throw new BadRequestException('insufficient credit balance');
@@ -72,6 +83,21 @@ export class BillingCreditService {
       walletRedemptionId: reservation.redemption.id,
       tenantUserId: tenantUser.id,
       userId: tenantUser.user.id,
+    };
+  }
+
+  async releaseCheckoutReservation(input: ReleaseCheckoutReservationInput) {
+    const redemption = await this.walletRedemptions.releaseRedemption(
+      input.walletRedemptionId,
+    );
+
+    if (!redemption || redemption.spendingTenantId !== input.tenantId) {
+      throw new NotFoundException('wallet redemption not found');
+    }
+
+    return {
+      walletRedemptionId: redemption.id,
+      status: redemption.status,
     };
   }
 }
