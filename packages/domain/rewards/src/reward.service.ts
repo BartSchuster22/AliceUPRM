@@ -50,10 +50,6 @@ export class RewardService {
     if (!config.triggers.includes(event.eventType)) {
       return { eligible: false, reason: 'event_type_not_triggered', rewards: [], postAt };
     }
-    if (event.currency !== config.currency) {
-      // FX not supported yet — flag as tech debt for Phase 9.
-      return { eligible: false, reason: 'currency_mismatch', rewards: [], postAt };
-    }
 
     const relevantAncestors = ancestors
       .filter((a) => a.depth >= 1 && a.tenantUserId !== event.referredTenantUserId)
@@ -72,7 +68,7 @@ export class RewardService {
         referrerTenantUserId: ancestor.tenantUserId,
         depth: ancestor.depth,
         amountMinor,
-        currency: event.currency,
+        currency: config.currency,
       });
     }
 

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -10,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { prisma } from '@uprm/db';
 import { IdentityService } from '@uprm/identity';
+import { parseRewardConfig, RewardConfigError } from '@uprm/rewards';
 import { TenantService } from '@uprm/tenants';
 import { AuditService } from '../audit/audit.service';
 import { AdminJwtGuard } from '../auth/admin-jwt.guard';
@@ -163,8 +165,12 @@ export class TenantsController {
     const before = await this.svc.getTenant(id);
     if (!before) throw new NotFoundException('tenant not found');
 
+    const rewardConfig = dto.rewardConfig
+      ? validateRewardConfig(dto.rewardConfig)
+      : undefined;
+
     const config = await this.svc.updateConfig(id, {
-      ...(dto.rewardConfig ? { rewardConfig: dto.rewardConfig } : {}),
+      ...(rewardConfig ? { rewardConfig } : {}),
       ...(dto.promoterConfig ? { promoterConfig: dto.promoterConfig } : {}),
       ...(dto.fraudConfig ? { fraudConfig: dto.fraudConfig } : {}),
     });
@@ -260,5 +266,20 @@ export class TenantsController {
     }
 
     return result;
+  }
+}
+
+function validateRewardConfig(raw: Record<string, unknown>) {
+  try {
+    return parseRewardConfig(raw);
+  } catch (error) {
+    if (error instanceof RewardConfigError) {
+      throw new BadRequestException({
+        code: error.code,
+        message: error.message,
+      });
+    }
+
+    throw error;
   }
 }

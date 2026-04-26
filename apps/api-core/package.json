@@ -32,6 +32,7 @@
     "@uprm/payments": "workspace:*",
     "@uprm/promoter": "workspace:*",
     "@uprm/referrals": "workspace:*",
+    "@uprm/rewards": "workspace:*",
     "@uprm/tenants": "workspace:*",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",

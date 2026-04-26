@@ -108,5 +108,5 @@ export class AccountService {
 }
 
 function isValidCurrency(c: string): boolean {
-  return /^[A-Z]{3}$/.test(c);
+  return c === 'credit' || /^[A-Z]{3}$/.test(c);
 }

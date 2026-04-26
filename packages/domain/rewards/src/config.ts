@@ -4,9 +4,11 @@ import { z } from 'zod';
  * Reward configuration per tenant.
  * Stored at tenant_configs.rewardConfig and validated on every read.
  */
+export const FIXED_REWARD_CURRENCY = 'credit' as const;
+
 export const RewardConfigSchema = z.object({
   enabled: z.boolean().default(false),
-  currency: z.string().regex(/^[A-Z]{3}$/),
+  currency: z.literal(FIXED_REWARD_CURRENCY),
   settlementWindowDays: z.number().int().min(0).max(90),
   triggers: z.array(z.string()).min(1),
   tiers: z

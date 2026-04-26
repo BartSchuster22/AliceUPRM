@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import { FIXED_REWARD_CURRENCY } from '@uprm/rewards';
 import { UsersController } from './users.controller';
 
 describe('UsersController balance, profile, subscriptions, promoter status, and payouts', () => {
@@ -121,7 +122,7 @@ describe('UsersController balance, profile, subscriptions, promoter status, and 
     expect(result).toEqual({ subscriptions: [] });
   });
 
-  it('returns formatted balance using the tenant base currency', async () => {
+  it('returns formatted balance using the fixed reward credit currency', async () => {
     const tenantUser = { id: 'tu-alice' };
     const tenant = { id: 'tenant-1', baseCurrency: 'EUR' };
     const balance = { balance: -299n };
@@ -142,12 +143,12 @@ describe('UsersController balance, profile, subscriptions, promoter status, and 
 
     expect(result).toEqual({
       tenant_user_id: 'tu-alice',
-      base_currency: 'EUR',
+      base_currency: FIXED_REWARD_CURRENCY,
       balance_credits: 299,
       balance_display: '299 Credits',
       balance_as_money: {
         amount_minor: 299,
-        formatted: '€2.99',
+        formatted: '299 Credits',
       },
     });
   });
@@ -171,12 +172,12 @@ describe('UsersController balance, profile, subscriptions, promoter status, and 
 
     expect(result).toEqual({
       tenant_user_id: 'tu-bob',
-      base_currency: 'EUR',
+      base_currency: FIXED_REWARD_CURRENCY,
       balance_credits: 0,
       balance_display: '0 Credits',
       balance_as_money: {
         amount_minor: 0,
-        formatted: '€0.00',
+        formatted: '0 Credits',
       },
     });
   });
@@ -197,7 +198,9 @@ describe('UsersController balance, profile, subscriptions, promoter status, and 
       uprm: { tenantId: 'tenant-1' },
     });
 
-    expect((controller as any).promoterSvc.getPromoterStatus).toHaveBeenCalledWith({
+    expect(
+      (controller as any).promoterSvc.getPromoterStatus,
+    ).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
       tenantUserId: 'tu-promoter',
     });

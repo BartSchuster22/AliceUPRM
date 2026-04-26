@@ -113,7 +113,7 @@ export class PostingService {
   }
 
   private validateStructure(input: PostEntryInput): void {
-    if (!/^[A-Z]{3}$/.test(input.currency)) {
+    if (!(input.currency === 'credit' || /^[A-Z]{3}$/.test(input.currency))) {
       throw new LedgerError(`invalid currency: ${input.currency}`, 'BAD_CURRENCY');
     }
     if (!input.idempotencyKey || input.idempotencyKey.length < 8) {

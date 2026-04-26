@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { FIXED_REWARD_CURRENCY } from '@uprm/rewards';
 import { PayoutError, PayoutService } from './payout.service';
 
 describe('PayoutService', () => {
@@ -31,7 +32,7 @@ describe('PayoutService', () => {
       tenantId: 'tenant-1',
       tenantUserId: 'tu-1',
       amountMinor: 250n,
-      baseCurrency: 'EUR',
+      baseCurrency: FIXED_REWARD_CURRENCY,
       destinationCurrency: 'USD',
       payoutMethod: 'bank_transfer',
       destination: { iban: 'DE123' },
@@ -60,7 +61,7 @@ describe('PayoutService', () => {
 
     expect((svc as any).postings.postEntry).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
-      currency: 'EUR',
+      currency: FIXED_REWARD_CURRENCY,
       description: 'Reserve payout request po-1',
       idempotencyKey: 'payout-request:po-1',
       sourceEventId: undefined,
@@ -70,6 +71,7 @@ describe('PayoutService', () => {
       ],
     });
     expect(result.status).toBe('requested');
+    expect(result.baseCurrency).toBe(FIXED_REWARD_CURRENCY);
   });
 
   it('rejects payout requests that exceed available balance', async () => {

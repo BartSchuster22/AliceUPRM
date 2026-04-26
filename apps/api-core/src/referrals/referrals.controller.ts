@@ -14,6 +14,7 @@ import {
 import { BalanceService } from '@uprm/ledger';
 import { prisma } from '@uprm/db';
 import { ReferralService, ReferralError } from '@uprm/referrals';
+import { FIXED_REWARD_CURRENCY } from '@uprm/rewards';
 import { IdentityService } from '@uprm/identity';
 import { TenantService } from '@uprm/tenants';
 import { HmacAuthGuard } from '../auth/hmac-auth.guard';
@@ -135,7 +136,7 @@ export class ReferralsController {
     const accountBalance = await this.balanceSvc.getUserBalance(
       tenantId,
       tenantUser.id,
-      tenant.baseCurrency,
+      FIXED_REWARD_CURRENCY,
     );
     const rawBalance = accountBalance?.balance ?? 0n;
     const totalCreditCents = Number(-rawBalance);

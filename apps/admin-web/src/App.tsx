@@ -42,6 +42,7 @@ import {
   type TenantUserSummary,
   type WebhookDeliveryRow,
 } from './api';
+import { RewardConfigEditor } from './RewardConfigEditor';
 
 type ViewKey =
   | 'tenants'
@@ -747,19 +748,16 @@ export default function App() {
               <h3>Tenant config editor</h3>
               {selectedTenant ? (
                 <>
-                  <label className="field">
-                    <span>Reward config JSON</span>
-                    <textarea
-                      value={tenantConfigDrafts.rewardConfig}
-                      rows={8}
-                      onChange={(event) =>
-                        setTenantConfigDrafts((current) => ({
-                          ...current,
-                          rewardConfig: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
+                  <RewardConfigEditor
+                    value={tenantConfigDrafts.rewardConfig}
+                    onChange={(rewardConfig) =>
+                      setTenantConfigDrafts((current) => ({
+                        ...current,
+                        rewardConfig,
+                      }))
+                    }
+                    disabled={loading}
+                  />
                   <label className="field">
                     <span>Promoter config JSON</span>
                     <textarea

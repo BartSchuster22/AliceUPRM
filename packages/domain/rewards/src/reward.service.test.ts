@@ -11,7 +11,7 @@ function makeEvent(overrides: Partial<TriggerEvent> = {}): TriggerEvent {
     eventType: 'invoice_paid',
     occurredAt: new Date('2026-04-21T10:00:00Z'),
     referredTenantUserId: 'bob',
-    amountMinor: 2999n, // €29.99
+    amountMinor: 2999n, // €29.99 purchase value
     currency: 'EUR',
     ...overrides,
   };
@@ -20,7 +20,7 @@ function makeEvent(overrides: Partial<TriggerEvent> = {}): TriggerEvent {
 function makeConfig(overrides: Partial<RewardConfig> = {}): RewardConfig {
   return {
     enabled: true,
-    currency: 'EUR',
+    currency: 'credit',
     settlementWindowDays: 7,
     triggers: ['invoice_paid', 'purchase_completed'],
     tiers: [
@@ -44,10 +44,12 @@ describe('RewardService.computeRewards — happy path', () => {
     const alice = result.rewards.find((r) => r.referrerTenantUserId === 'alice')!;
     expect(alice.depth).toBe(1);
     expect(alice.amountMinor).toBe(299n); // 10% of 2999 = 299.9, truncated to 299
+    expect(alice.currency).toBe('credit');
 
     const root = result.rewards.find((r) => r.referrerTenantUserId === 'root')!;
     expect(root.depth).toBe(2);
     expect(root.amountMinor).toBe(59n); // 2% of 2999 = 59.98, truncated to 59
+    expect(root.currency).toBe('credit');
   });
 
   it('sets postAt to occurredAt + settlementWindowDays', () => {
@@ -63,7 +65,7 @@ describe('RewardService.computeRewards — percent math', () => {
     const result = svc.computeRewards(makeEvent({ amountMinor: 10_000n }), makeConfig(), [
       { tenantUserId: 'alice', depth: 1 },
     ]);
-    expect(result.rewards[0]!.amountMinor).toBe(1000n); // exactly €10
+    expect(result.rewards[0]!.amountMinor).toBe(1000n); // 1000 credits minor units
   });
 
   it('handles fractional percents like 2.5%', () => {
@@ -72,7 +74,7 @@ describe('RewardService.computeRewards — percent math', () => {
       makeConfig({ tiers: [{ depth: 1, type: 'percent', value: '2.5' }] }),
       [{ tenantUserId: 'alice', depth: 1 }],
     );
-    expect(result.rewards[0]!.amountMinor).toBe(250n); // €2.50
+    expect(result.rewards[0]!.amountMinor).toBe(250n);
   });
 
   it('handles very small percents like 0.075%', () => {
@@ -81,7 +83,7 @@ describe('RewardService.computeRewards — percent math', () => {
       makeConfig({ tiers: [{ depth: 1, type: 'percent', value: '0.075' }] }),
       [{ tenantUserId: 'alice', depth: 1 }],
     );
-    expect(result.rewards[0]!.amountMinor).toBe(750n); // €7.50
+    expect(result.rewards[0]!.amountMinor).toBe(750n);
   });
 });
 
@@ -92,7 +94,7 @@ describe('RewardService.computeRewards — flat rewards', () => {
       makeConfig({ tiers: [{ depth: 1, type: 'flat', value: '5.00' }] }),
       [{ tenantUserId: 'alice', depth: 1 }],
     );
-    expect(result.rewards[0]!.amountMinor).toBe(500n); // €5
+    expect(result.rewards[0]!.amountMinor).toBe(500n);
   });
 });
 
@@ -114,14 +116,14 @@ describe('RewardService.computeRewards — guards', () => {
     expect(result.reason).toBe('event_type_not_triggered');
   });
 
-  it('returns no rewards on currency mismatch', () => {
+  it('uses the configured reward currency even when the purchase event is fiat', () => {
     const result = svc.computeRewards(
-      makeEvent({ currency: 'USD' }),
-      makeConfig({ currency: 'EUR' }),
+      makeEvent({ currency: 'EUR' }),
+      makeConfig({ currency: 'credit' }),
       [{ tenantUserId: 'alice', depth: 1 }],
     );
-    expect(result.eligible).toBe(false);
-    expect(result.reason).toBe('currency_mismatch');
+    expect(result.eligible).toBe(true);
+    expect(result.rewards[0]!.currency).toBe('credit');
   });
 
   it('filters out self-referral ancestors (depth 0)', () => {
@@ -155,15 +157,16 @@ describe('RewardService.computeRewards — guards', () => {
 });
 
 describe('parseRewardConfig', () => {
-  it('accepts a valid config', async () => {
+  it('accepts a valid config with fixed credit currency', async () => {
     const { parseRewardConfig } = await import('./config');
     const cfg = parseRewardConfig({
       enabled: true,
-      currency: 'EUR',
+      currency: 'credit',
       settlementWindowDays: 7,
       triggers: ['invoice_paid'],
       tiers: [{ depth: 1, type: 'percent', value: '10' }],
     });
+    expect(cfg.currency).toBe('credit');
     expect(cfg.tiers).toHaveLength(1);
   });
 
@@ -172,7 +175,7 @@ describe('parseRewardConfig', () => {
     expect(() =>
       parseRewardConfig({
         enabled: true,
-        currency: 'EUR',
+        currency: 'credit',
         settlementWindowDays: 7,
         triggers: ['invoice_paid'],
         tiers: [{ depth: 1, type: 'percent', value: 'banana' }],

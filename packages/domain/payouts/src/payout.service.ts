@@ -1,5 +1,6 @@
 import { prisma, PrismaClient } from '@uprm/db';
 import { AccountService, BalanceService, PostingService } from '@uprm/ledger';
+import { FIXED_REWARD_CURRENCY } from '@uprm/rewards';
 
 export class PayoutError extends Error {
   constructor(
@@ -44,10 +45,11 @@ export class PayoutService {
     const tenant = await this.db.tenant.findUnique({ where: { id: input.tenantId } });
     if (!tenant) throw new PayoutError('tenant not found', 'TENANT_NOT_FOUND');
 
+    const rewardCurrency = FIXED_REWARD_CURRENCY;
     const userBalance = await this.balances.getUserBalance(
       input.tenantId,
       input.tenantUserId,
-      tenant.baseCurrency,
+      rewardCurrency,
     );
     const availableMinor = -(userBalance?.balance ?? 0n);
     if (availableMinor < input.amountMinor) {
@@ -59,7 +61,7 @@ export class PayoutService {
         tenantId: input.tenantId,
         tenantUserId: input.tenantUserId,
         amountMinor: input.amountMinor,
-        baseCurrency: tenant.baseCurrency,
+        baseCurrency: rewardCurrency,
         destinationCurrency: input.destinationCurrency ?? null,
         payoutMethod: input.payoutMethod,
         destination: input.destination as any,
@@ -70,19 +72,19 @@ export class PayoutService {
     const payable = await this.accounts.ensureSystemAccount({
       tenantId: input.tenantId,
       accountType: 'payout_payable',
-      currency: tenant.baseCurrency,
+      currency: rewardCurrency,
     });
     const userBalanceAccount = userBalance?.accountId
       ? { id: userBalance.accountId }
       : await this.accounts.ensureUserBalanceAccount({
           tenantId: input.tenantId,
           tenantUserId: input.tenantUserId,
-          currency: tenant.baseCurrency,
+          currency: rewardCurrency,
         });
 
     await this.postings.postEntry({
       tenantId: input.tenantId,
-      currency: tenant.baseCurrency,
+      currency: rewardCurrency,
       description: `Reserve payout request ${payout.id}`,
       idempotencyKey: `payout-request:${payout.id}`,
       postings: [

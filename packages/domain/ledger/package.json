@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
     "test": "pnpm test:unit",
-    "test:unit": "vitest run src/posting.service.test.ts",
+    "test:unit": "vitest run src/posting.service.test.ts src/account.service.test.ts",
     "test:integration": "vitest run src/ledger.integration.test.ts"
   },
   "dependencies": {

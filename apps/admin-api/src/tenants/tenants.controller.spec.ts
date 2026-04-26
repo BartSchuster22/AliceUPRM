@@ -1,6 +1,14 @@
 import { TenantsController } from './tenants.controller';
 
 describe('TenantsController webhook config', () => {
+  const validRewardConfig = {
+    enabled: true,
+    currency: 'credit',
+    settlementWindowDays: 7,
+    triggers: ['invoice_paid'],
+    tiers: [{ depth: 1, type: 'percent', value: '10' }],
+  };
+
   let controller: TenantsController;
 
   beforeEach(() => {
@@ -27,7 +35,7 @@ describe('TenantsController webhook config', () => {
       }),
       updateConfig: jest.fn().mockResolvedValue({
         tenantId: 'tenant-1',
-        rewardConfig: { enabled: true },
+        rewardConfig: validRewardConfig,
         promoterConfig: { minReferrals: 5 },
         fraudConfig: { threshold: 10 },
       }),
@@ -39,7 +47,7 @@ describe('TenantsController webhook config', () => {
     const result = await (controller as any).updateConfig(
       'tenant-1',
       {
-        rewardConfig: { enabled: true },
+        rewardConfig: validRewardConfig,
         promoterConfig: { minReferrals: 5 },
         fraudConfig: { threshold: 10 },
       },
@@ -61,10 +69,46 @@ describe('TenantsController webhook config', () => {
     expect((controller as any).audit.write).toHaveBeenCalled();
     expect(result).toEqual({
       tenant_id: 'tenant-1',
-      reward_config: { enabled: true },
+      reward_config: validRewardConfig,
       promoter_config: { minReferrals: 5 },
       fraud_config: { threshold: 10 },
     });
+  });
+
+  it('rejects invalid reward config payloads before persisting them', async () => {
+    (controller as any).svc = {
+      getTenant: jest.fn().mockResolvedValue({
+        id: 'tenant-1',
+        config: {},
+      }),
+      updateConfig: jest.fn(),
+    };
+
+    await expect(
+      (controller as any).updateConfig(
+        'tenant-1',
+        {
+          rewardConfig: {
+            enabled: true,
+            currency: 'credit',
+            settlementWindowDays: 7,
+            triggers: ['invoice_paid'],
+            tiers: [],
+          },
+        },
+        {
+          method: 'POST',
+          route: { path: '/admin/tenants/:id/config' },
+          headers: {},
+        },
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'INVALID_CONFIG',
+      }),
+    });
+
+    expect((controller as any).svc.updateConfig).not.toHaveBeenCalled();
   });
 
   it('updates Stripe webhook config for a tenant and writes an audit row', async () => {

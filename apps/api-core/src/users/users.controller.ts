@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { PayoutService } from '@uprm/payouts';
+import { FIXED_REWARD_CURRENCY } from '@uprm/rewards';
 import { TenantService } from '@uprm/tenants';
 import { IdentityError, IdentityService } from '@uprm/identity';
 import { ReferralService } from '@uprm/referrals';
@@ -99,7 +100,7 @@ export class UsersController {
     const tenant = await this.tenantSvc.getTenant(tenantId);
     if (!tenant) throw new NotFoundException('tenant not found');
 
-    const currency = tenant.baseCurrency;
+    const currency = FIXED_REWARD_CURRENCY;
     const accountBalance = await this.balanceSvc.getUserBalance(
       tenantId,
       id,
@@ -185,6 +186,10 @@ export class UsersController {
 }
 
 function formatMinorCurrency(amountMinor: number, currency: string): string {
+  if (currency === FIXED_REWARD_CURRENCY) {
+    return `${amountMinor} Credits`;
+  }
+
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,

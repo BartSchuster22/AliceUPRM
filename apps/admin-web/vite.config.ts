@@ -7,4 +7,15 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 4173,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/recharts')) return 'recharts';
+          if (id.includes('node_modules')) return 'vendor';
+          return undefined;
+        },
+      },
+    },
+  },
 });

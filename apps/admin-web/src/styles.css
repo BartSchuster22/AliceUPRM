@@ -314,6 +314,112 @@ pre {
   margin-top: 12px;
 }
 
+.segmented-control {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.segmented-control .secondary.active {
+  background: rgba(118, 142, 255, 0.2);
+}
+
+.reward-editor,
+.reward-editor-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.reward-editor-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.toggle-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.toggle-field input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+}
+
+.pill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(118, 142, 255, 0.16);
+  color: #dbe4ff;
+  font-size: 13px;
+}
+
+.reward-tier-toolbar {
+  align-items: flex-start;
+}
+
+.reward-tier-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reward-tier-row {
+  display: grid;
+  grid-template-columns: 140px 90px minmax(120px, 160px) minmax(140px, 1fr) 110px;
+  gap: 12px;
+  align-items: end;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.reward-tier-row.is-disabled {
+  opacity: 0.7;
+}
+
+.reward-tier-toggle {
+  align-self: center;
+}
+
+.reward-tier-depth {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #d7e3ff;
+  font-weight: 600;
+}
+
+.reward-tier-delete {
+  min-height: 48px;
+}
+
+.empty-state-inline {
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #a4b2d6;
+}
+
+.error-text {
+  color: #ff9ca8;
+}
+
 @media (max-width: 960px) {
   .layout {
     grid-template-columns: 1fr;
@@ -325,5 +431,10 @@ pre {
     grid-template-columns: 1fr;
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .reward-editor-meta-grid,
+  .reward-tier-row {
+    grid-template-columns: 1fr;
   }
 }
