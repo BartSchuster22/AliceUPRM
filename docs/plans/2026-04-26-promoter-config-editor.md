@@ -22,6 +22,7 @@ Tech stack: React 18, Vite, TypeScript, Vitest.
 ## Checkpoint A
 
 - Confirm current promoter config is only a raw textarea in `apps/admin-web/src/App.tsx`.
+
 - Confirm there is no current typed `promoterConfig` backend schema that would conflict.
 
 ## Checkpoint B
@@ -34,6 +35,7 @@ Tech stack: React 18, Vite, TypeScript, Vitest.
    - add/edit/delete promoter type
    - per-promoter enabled toggle
    - nested bonus-tier add/edit/delete
+
 5. Replace the raw promoter textarea in `App.tsx` with the new editor.
 6. Extend CSS as needed for nested promoter rows.
 
