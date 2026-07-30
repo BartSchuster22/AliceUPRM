@@ -15,3 +15,6 @@ coverage
 *.age
 rabbitmq-definitions*.json
 rabbitmq-definitions*.json.sha256
+
+# TypeScript incremental build metadata
+*.tsbuildinfo
