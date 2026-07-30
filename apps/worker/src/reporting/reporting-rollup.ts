@@ -1,12 +1,20 @@
 import { prisma } from '@uprm/db';
-import { ReportingService } from '@uprm/reporting';
+import { ReportingService, type ReportingRangeInput } from '@uprm/reporting';
+
+interface TenantLookup {
+  tenant: {
+    findMany(input: { select: { id: true } }): Promise<Array<{ id: string }>>;
+  };
+}
+
+type ReportingRollupService = Pick<ReportingService, 'rebuildAll'>;
 
 export class ReportingRollupRunner {
   private running = false;
   private readonly intervalMs: number;
   private readonly lookbackDays: number;
-  private db: any = prisma;
-  private reporting: ReportingService = new ReportingService(prisma as any);
+  private readonly db: TenantLookup;
+  private readonly reporting: ReportingRollupService;
 
   public metrics = {
     rollups: 0,
@@ -14,9 +22,17 @@ export class ReportingRollupRunner {
     lastSuccessUnix: 0,
   };
 
-  constructor(input?: { intervalMs?: number; lookbackDays?: number }) {
+  constructor(
+    input?: { intervalMs?: number; lookbackDays?: number },
+    dependencies: {
+      db?: TenantLookup;
+      reporting?: ReportingRollupService;
+    } = {},
+  ) {
     this.intervalMs = input?.intervalMs ?? 15 * 60_000;
     this.lookbackDays = input?.lookbackDays ?? 90;
+    this.db = dependencies.db ?? prisma;
+    this.reporting = dependencies.reporting ?? new ReportingService(prisma);
   }
 
   async runOnce(): Promise<void> {
@@ -26,20 +42,21 @@ export class ReportingRollupRunner {
 
     for (const tenant of tenants) {
       try {
-        await this.reporting.rebuildAll({
+        const input: ReportingRangeInput & { asOf: Date } = {
           tenantId: tenant.id,
           from,
           to: now,
           asOf: now,
-        } as any);
+        };
+        await this.reporting.rebuildAll(input);
         this.metrics.rollups += 1;
         this.metrics.lastSuccessUnix = Math.floor(Date.now() / 1000);
-      } catch (error: any) {
+      } catch (error: unknown) {
         this.metrics.failures += 1;
         console.error(
           '[reporting-rollup] error:',
           tenant.id,
-          error?.message ?? error,
+          error instanceof Error ? error.message : error,
         );
       }
     }
@@ -53,7 +70,7 @@ export class ReportingRollupRunner {
     }
   }
 
-  stop() {
+  stop(): void {
     this.running = false;
   }
 }

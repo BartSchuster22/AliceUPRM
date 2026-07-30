@@ -17,8 +17,11 @@ export class RewardScheduler {
         const result = await this.svc.postDueRewards();
         this.metrics.posted += result.posted;
         this.metrics.batches++;
-      } catch (e: any) {
-        console.error('[rewards-scheduler] error:', e?.message ?? e);
+      } catch (error: unknown) {
+        console.error(
+          '[rewards-scheduler] error:',
+          error instanceof Error ? error.message : error,
+        );
       }
       await sleep(intervalMs);
     }

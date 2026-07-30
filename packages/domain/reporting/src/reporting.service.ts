@@ -18,7 +18,10 @@ export interface DashboardSeriesInput {
 }
 
 export class ReportingService {
-  constructor(private readonly db: any = prisma as any) {}
+  constructor(
+    private readonly db: any = prisma as any,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
 
   async rebuildConversionDaily(input: ReportingRangeInput) {
     const { tenantId, from, to } = normalizeRange(input);
@@ -436,7 +439,7 @@ export class ReportingService {
 
   async getDashboardSeries(input: DashboardSeriesInput) {
     const rangeDays = Math.max(1, Math.min(input.days, 365));
-    const now = new Date();
+    const now = this.now();
     const from = toUtcDay(new Date(now.getTime() - (rangeDays - 1) * 86_400_000));
     const to = endOfUtcDay(now);
 

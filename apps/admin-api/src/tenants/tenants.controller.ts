@@ -95,7 +95,7 @@ export class TenantsController {
         resourceType: 'tenant',
         resourceId: tenant.id,
         tenantId: tenant.id,
-        after: result,
+        after: redactSecrets(result),
       });
     }
 
@@ -190,7 +190,7 @@ export class TenantsController {
         resourceType: 'tenant',
         resourceId: id,
         tenantId: id,
-        before: before.config,
+        before: redactSecrets(before.config),
         after: result,
       });
     }
@@ -249,7 +249,7 @@ export class TenantsController {
 
     const result = {
       tenant_id: config.tenantId,
-      webhook_config: config.webhookConfig,
+      webhook_config: redactSecrets(config.webhookConfig),
     };
 
     if (req.admin) {
@@ -260,7 +260,7 @@ export class TenantsController {
         resourceType: 'tenant',
         resourceId: id,
         tenantId: id,
-        before: before.config,
+        before: redactSecrets(before.config),
         after: result,
       });
     }
@@ -287,6 +287,7 @@ function validateRewardConfig(raw: Record<string, unknown>) {
 function mapTenantRecord(tenant: any) {
   return {
     ...tenant,
+    config: redactSecrets(tenant.config),
     active_promoters: (tenant.activePromoters ?? []).map((profile: any) => ({
       id: profile.id,
       tenant_user_id: profile.tenantUserId,
@@ -299,4 +300,30 @@ function mapTenantRecord(tenant: any) {
       external_user_id: profile.tenantUser?.externalUserId ?? null,
     })),
   };
+}
+
+const SENSITIVE_CONFIG_KEYS = new Set([
+  'secret',
+  'signingSecret',
+  'webhookSecret',
+  'password',
+  'token',
+  'plaintextKey',
+]);
+
+/** Keep tenant configuration readable without returning or auditing credentials. */
+function redactSecrets(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactSecrets);
+  }
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, child]) => [
+      key,
+      SENSITIVE_CONFIG_KEYS.has(key) ? '[REDACTED]' : redactSecrets(child),
+    ]),
+  );
 }

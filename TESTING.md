@@ -1,5 +1,18 @@
 # UPRM Testing
 
+The complete pull-request quality gate is:
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+`pnpm lint` is read-only. Use an app's explicit `lint:fix` command only when
+you intend to modify source. `pnpm build` compiles every app and package with a
+build script.
+
 ## Default test command
 
 Use this for normal verification:

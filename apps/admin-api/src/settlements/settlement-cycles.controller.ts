@@ -26,7 +26,10 @@ export class SettlementCyclesController {
 
   @Get()
   @Roles('super_admin', 'tenant_admin', 'support')
-  async list(@Query('tenant_id') tenantId?: string, @Query('status') status?: string) {
+  async list(
+    @Query('tenant_id') tenantId?: string,
+    @Query('status') status?: string,
+  ) {
     const items = await this.svc.listCycles({ tenantId, status });
     return items.map(mapCycle);
   }
@@ -43,7 +46,10 @@ export class SettlementCyclesController {
 
   @Post('open')
   @Roles('super_admin', 'tenant_admin')
-  async open(@Body() dto: OpenSettlementCycleDto, @Req() req: AdminRequestLike) {
+  async open(
+    @Body() dto: OpenSettlementCycleDto,
+    @Req() req: AdminRequestLike,
+  ) {
     const cycle = await this.svc.openCycle({
       tenantId: dto.tenantId,
       adminUserId: req.admin?.adminUserId ?? 'system',
@@ -52,7 +58,14 @@ export class SettlementCyclesController {
       ...(dto.periodEnd ? { periodEnd: new Date(dto.periodEnd) } : {}),
     });
 
-    await writeAudit(this.audit, req, 'settlement.cycle.open', cycle.id, null, cycle);
+    await writeAudit(
+      this.audit,
+      req,
+      'settlement.cycle.open',
+      cycle.id,
+      null,
+      cycle,
+    );
     return mapCycle(cycle);
   }
 
@@ -73,7 +86,14 @@ export class SettlementCyclesController {
       note: dto.note,
     });
 
-    await writeAudit(this.audit, req, 'settlement.cycle.close', id, before, cycle);
+    await writeAudit(
+      this.audit,
+      req,
+      'settlement.cycle.close',
+      id,
+      before,
+      cycle,
+    );
     return mapCycle(cycle);
   }
 }
@@ -108,15 +128,18 @@ function mapCycle(cycle: any) {
     period_start: cycle.periodStart,
     period_end: cycle.periodEnd,
     ledger_liability_minor:
-      cycle.ledgerLiabilityMinor === undefined || cycle.ledgerLiabilityMinor === null
+      cycle.ledgerLiabilityMinor === undefined ||
+      cycle.ledgerLiabilityMinor === null
         ? null
         : cycle.ledgerLiabilityMinor.toString(),
     pending_liability_minor:
-      cycle.pendingLiabilityMinor === undefined || cycle.pendingLiabilityMinor === null
+      cycle.pendingLiabilityMinor === undefined ||
+      cycle.pendingLiabilityMinor === null
         ? null
         : cycle.pendingLiabilityMinor.toString(),
     total_liability_minor:
-      cycle.totalLiabilityMinor === undefined || cycle.totalLiabilityMinor === null
+      cycle.totalLiabilityMinor === undefined ||
+      cycle.totalLiabilityMinor === null
         ? null
         : cycle.totalLiabilityMinor.toString(),
     note: cycle.note ?? null,

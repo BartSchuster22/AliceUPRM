@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, Matches, Min } from 'class-validator';
+import { IsString } from 'class-validator';
 
 export class UserDetailQueryDto {
   @IsString()

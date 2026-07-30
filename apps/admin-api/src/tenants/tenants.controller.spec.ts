@@ -22,6 +22,11 @@ describe('TenantsController webhook config', () => {
           id: 'tenant-1',
           slug: 'psi',
           name: 'PSI',
+          config: {
+            webhookConfig: {
+              stripe: { webhookSecret: 'whsec_list_secret' },
+            },
+          },
           activePromoters: [
             {
               id: 'profile-1',
@@ -41,10 +46,16 @@ describe('TenantsController webhook config', () => {
       ]),
     };
 
-    await expect(controller.list()).resolves.toEqual([
+    const listed = await controller.list();
+    expect(listed).toEqual([
       expect.objectContaining({
         id: 'tenant-1',
         slug: 'psi',
+        config: {
+          webhookConfig: {
+            stripe: { webhookSecret: '[REDACTED]' },
+          },
+        },
         active_promoters: [
           expect.objectContaining({
             tenant_user_id: 'tu-alice',
@@ -54,6 +65,7 @@ describe('TenantsController webhook config', () => {
         ],
       }),
     ]);
+    expect(JSON.stringify(listed)).not.toContain('whsec_list_secret');
   });
 
   it('updates generic tenant config and writes an audit row', async () => {
@@ -207,12 +219,15 @@ describe('TenantsController webhook config', () => {
       webhook_config: {
         stripe: {
           enabled: true,
-          webhookSecret: 'whsec_test_123',
+          webhookSecret: '[REDACTED]',
           mode: 'test',
           defaultCurrency: 'EUR',
         },
       },
     });
+    expect(
+      JSON.stringify((controller as any).audit.write.mock.calls),
+    ).not.toContain('whsec_test_123');
   });
 
   it('merges outbound webhook config without clobbering Stripe config', async () => {
@@ -317,10 +332,13 @@ describe('TenantsController webhook config', () => {
         {
           id: 'psi-primary',
           url: 'https://psi.internal/uprm/webhooks',
-          secret: 'supersecret1',
+          secret: '[REDACTED]',
           eventTypes: ['reward.created', 'wallet.balance.changed'],
         },
       ],
     });
+    expect(
+      JSON.stringify((controller as any).audit.write.mock.calls),
+    ).not.toContain('supersecret1');
   });
 });

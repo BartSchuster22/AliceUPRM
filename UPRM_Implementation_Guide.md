@@ -3,6 +3,8 @@
 **Structured Implementation Guide & Prompt-by-Prompt Build Plan for the Coding AI Agent**
 
 > Note: this file is the roadmap/design guide, not the live state record.
+> The current audited implementation record is
+> [`docs/PROJECT_EVALUATION.md`](docs/PROJECT_EVALUATION.md).
 > Current development state must be determined from the live repo and VPS reality in this order: `git status/log` on `/srv/uprm`, actual source files/controllers/schema, and live runtime/DB checks.
 > `UPRM_As_Built.md` is only a milestone snapshot and may be stale between milestones; do not use it as the default source of current development status.
 >

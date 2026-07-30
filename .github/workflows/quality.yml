@@ -1,0 +1,102 @@
+name: quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://uprm:uprm@127.0.0.1:5432/uprm?schema=public
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @uprm/db db:generate
+
+      - name: Shell syntax
+        run: bash -n scripts/*.sh scripts/tests/*.test.sh
+
+      - name: Deployment script tests
+        run: |
+          scripts/tests/validate-env.test.sh
+          scripts/tests/postgres-backup-restore.test.sh
+          scripts/tests/migration-bundle.test.sh
+          scripts/tests/install-system-files.test.sh
+          scripts/tests/preflight-host.test.sh
+          scripts/tests/rabbitmq-tools.test.sh
+          scripts/tests/install-uprm.test.sh
+          scripts/tests/verify-installation.test.sh
+
+      - name: Compose validates with synthetic env
+        run: |
+          tmp=$(mktemp)
+          chmod 600 "$tmp"
+          cat > "$tmp" <<'EOF'
+POSTGRES_USER=uprm
+POSTGRES_PASSWORD=verysecretpg12
+POSTGRES_DB=uprm
+DATABASE_URL=postgresql://uprm:verysecretpg12@127.0.0.1:5432/uprm
+REDIS_PASSWORD=verysecretredis12
+REDIS_URL=redis://:verysecretredis12@127.0.0.1:6379
+RABBITMQ_USER=uprm
+RABBITMQ_PASSWORD=verysecretrabbit12
+RABBITMQ_URL=amqp://uprm:verysecretrabbit12@127.0.0.1:5672
+MINIO_USER=uprm
+MINIO_PASSWORD=verysecretminio12
+MINIO_ENDPOINT=http://127.0.0.1:9000
+GRAFANA_PASSWORD=verysecretgrafana12
+UPRM_MASTER_SECRET=0123456789abcdef0123456789abcdef
+UPRM_ADMIN_BOOTSTRAP_TOKEN=0123456789abcdef0123456789abcdef
+UPRM_ADMIN_JWT_SECRET=0123456789abcdef0123456789abcdef
+UPRM_ADMIN_JWT_ISSUER=
+UPRM_ADMIN_JWT_AUDIENCE=
+UPRM_ADMIN_JWT_PUBLIC_KEY=
+STRIPE_SECRET_KEY=sk_test_123456789012
+UPRM_WALLET_V2_READS=false
+PORT=
+UPRM_ADMIN_E2E_BASE_URL=
+UPRM_ADMIN_E2E_EMAIL=
+UPRM_ADMIN_E2E_PASSWORD=
+EOF
+          scripts/validate-env.sh --production "$tmp"
+          docker compose --env-file "$tmp" --file infra/docker/docker-compose.yml config --quiet
+          rm -f "$tmp"
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type-check
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

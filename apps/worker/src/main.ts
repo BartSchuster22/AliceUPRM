@@ -107,18 +107,28 @@ async function main() {
     promoterQualifications.stop();
     try {
       await consumer.stop();
-    } catch {}
+    } catch {
+      // Continue shutdown even if the consumer is already disconnected.
+    }
     await new Promise((r) => setTimeout(r, 200));
     try {
       await publisher.close();
-    } catch {}
+    } catch {
+      // Continue shutdown if the publisher connection is already closed.
+    }
     try {
       server.close();
-    } catch {}
+    } catch {
+      // The HTTP server may already have stopped accepting connections.
+    }
     process.exit(0);
   };
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => {
+    void shutdown('SIGINT');
+  });
+  process.on('SIGTERM', () => {
+    void shutdown('SIGTERM');
+  });
 
   // Kick off the two loops in parallel and never return.
   await Promise.all([

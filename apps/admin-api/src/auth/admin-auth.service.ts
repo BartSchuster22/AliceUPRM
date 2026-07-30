@@ -208,8 +208,8 @@ export class AdminAuthService {
       return false;
     }
 
-    const salt = parts[1]!;
-    const expectedHex = parts[2]!;
+    const salt = parts[1];
+    const expectedHex = parts[2];
     const actual = Buffer.from(
       scryptSync(password, salt, 64).toString('hex'),
       'hex',

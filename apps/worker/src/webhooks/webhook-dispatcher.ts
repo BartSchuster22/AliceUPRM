@@ -19,9 +19,33 @@ export interface FetchLike {
   }>;
 }
 
+export interface ClaimedWebhookDelivery {
+  id: string;
+  endpointUrl: string;
+  signingSecret: string;
+  payload: unknown;
+  attemptCount: number;
+  createdAt: Date;
+}
+
+export interface WebhookDeliveryStore {
+  claimDueBatch(now: Date, limit: number): Promise<ClaimedWebhookDelivery[]>;
+  markDelivered(id: string, statusCode: number): Promise<unknown>;
+  markFailure(
+    id: string,
+    input: {
+      statusCode?: number;
+      error: string;
+      retryAt: Date;
+      deadLetter?: boolean;
+    },
+  ): Promise<unknown>;
+  replayDelivery(id: string): Promise<unknown>;
+}
+
 export class WebhookDispatcher {
   private running = false;
-  private readonly service: WebhookDeliveryService;
+  private readonly service: WebhookDeliveryStore;
 
   public metrics: DispatcherMetrics = {
     delivered: 0,
@@ -33,7 +57,7 @@ export class WebhookDispatcher {
 
   constructor(
     private readonly fetchImpl: FetchLike = fetch as FetchLike,
-    service = new WebhookDeliveryService(),
+    service: WebhookDeliveryStore = new WebhookDeliveryService(),
   ) {
     this.service = service;
   }
@@ -79,14 +103,14 @@ export class WebhookDispatcher {
         });
         if (deadLetter) this.metrics.deadLetter += 1;
         else this.metrics.failed += 1;
-      } catch (error: any) {
+      } catch (error: unknown) {
         const deadLetter = this.shouldDeadLetter(
           row.attemptCount + 1,
           row.createdAt,
           now,
         );
         await this.service.markFailure(row.id, {
-          error: error?.message ?? 'network error',
+          error: error instanceof Error ? error.message : 'network error',
           retryAt: this.computeRetryAt(now, row.attemptCount + 1),
           deadLetter,
         });
@@ -119,7 +143,7 @@ export class WebhookDispatcher {
     }
   }
 
-  stop() {
+  stop(): void {
     this.running = false;
   }
 

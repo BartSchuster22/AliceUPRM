@@ -128,6 +128,7 @@ describe('WebhookDeliveriesController', () => {
         tenantId: 'tenant-1',
         eventType: 'reward.created',
         endpointUrl: 'https://psi.internal/uprm/webhooks',
+        signingSecret: 'do-not-audit-this-secret',
         status: 'pending',
       }),
     };
@@ -152,6 +153,9 @@ describe('WebhookDeliveriesController', () => {
       'wd-1',
     );
     expect((controller as any).audit.write).toHaveBeenCalled();
+    expect(
+      JSON.stringify((controller as any).audit.write.mock.calls),
+    ).not.toContain('do-not-audit-this-secret');
     expect(result).toEqual({
       id: 'wd-2',
       status: 'pending',

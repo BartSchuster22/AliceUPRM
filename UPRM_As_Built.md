@@ -1,5 +1,9 @@
 # UPRM — As-Built Documentation
 
+> **Historical document (2026-04 snapshot).** For the current source-backed
+> architecture, API inventory, verification evidence, security findings, and
+> roadmap comparison, read [`docs/PROJECT_EVALUATION.md`](docs/PROJECT_EVALUATION.md).
+
 Status of this file: milestone snapshot only, not the default live-state source.
 Current development state must be determined from `/srv/uprm` git state, current source files, schema, and live runtime/DB checks.
 Use this file only as a historical checkpoint describing what had been verified at the time it was last updated.

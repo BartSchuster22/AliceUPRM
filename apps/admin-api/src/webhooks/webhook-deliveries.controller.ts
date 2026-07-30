@@ -68,7 +68,7 @@ export class WebhookDeliveriesController {
         resourceType: 'webhook_delivery',
         resourceId: id,
         tenantId: (replayed as any).tenantId ?? null,
-        after: replayed,
+        after: this.mapDeliveryRow(replayed),
       });
     }
 

@@ -1,0 +1,20 @@
+[Unit]
+Description=UPRM container infrastructure
+Documentation=file:///srv/uprm/docs/deployment/INSTALL.md
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+Before=uprm-api-core.service uprm-admin-api.service uprm-worker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/uprm
+EnvironmentFile=/srv/uprm/.env
+ExecStartPre=/srv/uprm/scripts/validate-env.sh --production /srv/uprm/.env
+ExecStart=/usr/bin/docker compose --env-file /srv/uprm/.env --file /srv/uprm/infra/docker/docker-compose.yml up --detach --wait
+ExecReload=/usr/bin/docker compose --env-file /srv/uprm/.env --file /srv/uprm/infra/docker/docker-compose.yml up --detach --wait
+RemainAfterExit=yes
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

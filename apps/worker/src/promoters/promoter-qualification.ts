@@ -1,11 +1,22 @@
 import { prisma } from '@uprm/db';
 import { PromoterService } from '@uprm/promoter';
 
+interface TenantLookup {
+  tenant: {
+    findMany(input: { select: { id: true } }): Promise<Array<{ id: string }>>;
+  };
+}
+
+type PromoterQualificationService = Pick<
+  PromoterService,
+  'rollupDailyMetrics' | 'evaluateAutoQualifications'
+>;
+
 export class PromoterQualificationRunner {
   private running = false;
   private readonly intervalMs: number;
-  private db: any = prisma;
-  private promoter = new PromoterService(prisma as any);
+  private readonly db: TenantLookup;
+  private readonly promoter: PromoterQualificationService;
 
   public metrics = {
     rollups: 0,
@@ -14,8 +25,16 @@ export class PromoterQualificationRunner {
     lastSuccessUnix: 0,
   };
 
-  constructor(input?: { intervalMs?: number }) {
+  constructor(
+    input?: { intervalMs?: number },
+    dependencies: {
+      db?: TenantLookup;
+      promoter?: PromoterQualificationService;
+    } = {},
+  ) {
     this.intervalMs = input?.intervalMs ?? 15 * 60_000;
+    this.db = dependencies.db ?? prisma;
+    this.promoter = dependencies.promoter ?? new PromoterService(prisma);
   }
 
   async runOnce(asOf = new Date()): Promise<void> {
@@ -27,16 +46,18 @@ export class PromoterQualificationRunner {
           tenantId: tenant.id,
           date: asOf,
         });
-        const evaluated = await this.promoter.evaluateAutoQualifications({ asOf });
+        const evaluated = await this.promoter.evaluateAutoQualifications({
+          asOf,
+        });
         this.metrics.rollups += rolled.rows;
         this.metrics.transitions += evaluated.transitions;
         this.metrics.lastSuccessUnix = Math.floor(Date.now() / 1000);
-      } catch (error: any) {
+      } catch (error: unknown) {
         this.metrics.failures += 1;
         console.error(
           '[promoter-qualification] error:',
           tenant.id,
-          error?.message ?? error,
+          error instanceof Error ? error.message : error,
         );
       }
     }

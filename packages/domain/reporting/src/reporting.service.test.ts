@@ -527,7 +527,7 @@ describe('ReportingService', () => {
       retainedUsers: 1,
     });
 
-    const svc = new ReportingService(db as any);
+    const svc = new ReportingService(db as any, () => new Date('2026-04-24T12:00:00.000Z'));
     const result = await svc.getDashboardSeries({ tenantId: 'tenant-1', days: 30 });
 
     expect(result.tenantId).toBe('tenant-1');

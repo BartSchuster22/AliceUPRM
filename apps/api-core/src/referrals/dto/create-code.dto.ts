@@ -1,4 +1,4 @@
-import { IsString, IsUUID, IsOptional, IsISO8601 } from 'class-validator';
+import { IsUUID, IsOptional, IsISO8601 } from 'class-validator';
 
 export class CreateCodeDto {
   @IsUUID()

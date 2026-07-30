@@ -1,39 +1,41 @@
 # UPRM systemd units
 
-Three services manage the UPRM process tree:
+Versioned units reproduce the UPRM process tree at `/srv/uprm`:
 
-| Service        | Port | Description                              |
-| -------------- | ---- | ---------------------------------------- |
-| uprm-api-core  | 4000 | Tenant-facing HMAC-guarded API           |
-| uprm-admin-api | 4001 | Bootstrap-token admin API                |
-| uprm-worker    | 4002 | Outbox relay + reward consumer/scheduler |
+| Service | Port | Responsibility |
+| --- | ---: | --- |
+| `uprm-infrastructure` | — | Starts pinned Docker Compose services and waits for health. |
+| `uprm-api-core` | 4000 | Tenant-facing HMAC API. |
+| `uprm-admin-api` | 4001 | Admin API and built web console. |
+| `uprm-worker` | 4002 | Outbox, rewards, schedules, webhooks, qualification, reporting. |
 
-## Install on a fresh VPS
+The application units use system-installed Node/pnpm through `/usr/bin/env`, run production builds, validate `.env` before startup, and depend on the infrastructure unit. Secrets remain in `/srv/uprm/.env` with mode `0600`; they are not embedded in unit files.
 
-    sudo cp /srv/uprm/infra/systemd/*.service /etc/systemd/system/
-    sudo systemctl daemon-reload
-    sudo systemctl enable uprm-api-core uprm-admin-api uprm-worker
-    sudo systemctl start  uprm-api-core uprm-admin-api uprm-worker
+## Validate and install
 
-## Daily ops
+Use the repository installer rather than copying individual files:
 
-Status:
+```bash
+cd /srv/uprm
+scripts/install-system-files.sh \
+  --repo /srv/uprm \
+  --hostname uprm.example.com \
+  --dry-run
+sudo scripts/install-system-files.sh \
+  --repo /srv/uprm \
+  --env /srv/uprm/.env \
+  --hostname uprm.example.com \
+  --apply --start
+```
 
-    sudo systemctl status uprm-api-core
-    sudo systemctl list-units 'uprm-*'
+See [`docs/deployment/INSTALL.md`](../../docs/deployment/INSTALL.md) for the complete host procedure.
 
-Logs:
+## Operations
 
-    journalctl -u uprm-api-core -f
-    journalctl -u uprm-worker --since '10 min ago'
+```bash
+systemctl status uprm-infrastructure uprm-api-core uprm-admin-api uprm-worker
+journalctl -u uprm-worker --since '10 minutes ago'
+sudo systemctl restart uprm-api-core uprm-admin-api uprm-worker
+```
 
-Restart after a code change:
-
-    cd /srv/uprm && pnpm --filter api-core build
-    sudo systemctl restart uprm-api-core
-
-## Notes
-
-- Services run `pnpm run start` which invokes `nest start`. Tech debt: running `node dist/main.js` directly would be leaner but requires `shamefully-hoist=true` in pnpm config.
-- `EnvironmentFile=/srv/uprm/.env` loads secrets. The `.env` file must be present and readable by user `uprm`.
-- `Requires=docker.service` means Postgres and RabbitMQ containers start before these services.
+Build and migrate before restarting after a source change. Do not use systemd service activity alone as readiness proof; verify ports and HTTP health endpoints.

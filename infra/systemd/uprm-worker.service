@@ -1,8 +1,10 @@
 [Unit]
-Description=UPRM worker (outbox relay + reward consumer + scheduler)
-After=network-online.target docker.service
-Wants=network-online.target
-Requires=docker.service
+Description=UPRM worker (outbox, rewards, schedules, webhooks, reporting)
+Documentation=file:///srv/uprm/docs/deployment/INSTALL.md
+Requires=uprm-infrastructure.service
+After=uprm-infrastructure.service network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=10
 
 [Service]
 Type=simple
@@ -11,10 +13,24 @@ Group=uprm
 WorkingDirectory=/srv/uprm/apps/worker
 EnvironmentFile=/srv/uprm/.env
 Environment=PORT=4002
-Environment=PATH=/home/uprm/.nvm/versions/node/v20.20.2/bin:/usr/bin:/bin
-ExecStart=/home/uprm/.nvm/versions/node/v20.20.2/bin/pnpm run start
-Restart=always
+Environment=NODE_ENV=production
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/uprm/.local/share/pnpm
+ExecStartPre=/srv/uprm/scripts/validate-env.sh --production /srv/uprm/.env
+ExecStartPre=/usr/bin/test -f /srv/uprm/apps/worker/dist/main.js
+ExecStart=/usr/bin/env pnpm run start:prod
+Restart=on-failure
 RestartSec=3
+TimeoutStartSec=60
+TimeoutStopSec=45
+KillSignal=SIGTERM
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=full
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=uprm-worker

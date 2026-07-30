@@ -24,8 +24,13 @@ describe('SettlementCyclesController', () => {
     };
 
     const result = await (controller as any).list('tenant-1', 'open');
-    expect((controller as any).svc.listCycles).toHaveBeenCalledWith({ tenantId: 'tenant-1', status: 'open' });
-    expect(result[0]).toEqual(expect.objectContaining({ id: 'cycle-1', status: 'open' }));
+    expect((controller as any).svc.listCycles).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      status: 'open',
+    });
+    expect(result[0]).toEqual(
+      expect.objectContaining({ id: 'cycle-1', status: 'open' }),
+    );
   });
 
   it('opens a settlement cycle and writes audit', async () => {
@@ -40,7 +45,9 @@ describe('SettlementCyclesController', () => {
         totalLiabilityMinor: 324n,
       }),
     };
-    (controller as any).audit = { write: jest.fn().mockResolvedValue(undefined) };
+    (controller as any).audit = {
+      write: jest.fn().mockResolvedValue(undefined),
+    };
 
     const req = {
       admin: {
@@ -55,18 +62,31 @@ describe('SettlementCyclesController', () => {
       headers: {},
     };
 
-    const result = await (controller as any).open({ tenantId: 'tenant-1', note: 'open it' }, req);
+    const result = await (controller as any).open(
+      { tenantId: 'tenant-1', note: 'open it' },
+      req,
+    );
 
     expect((controller as any).svc.openCycle).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId: 'tenant-1', adminUserId: 'admin-1', note: 'open it' }),
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        adminUserId: 'admin-1',
+        note: 'open it',
+      }),
     );
     expect((controller as any).audit.write).toHaveBeenCalled();
-    expect(result).toEqual(expect.objectContaining({ id: 'cycle-1', status: 'open' }));
+    expect(result).toEqual(
+      expect.objectContaining({ id: 'cycle-1', status: 'open' }),
+    );
   });
 
   it('closes a settlement cycle and writes audit', async () => {
     (controller as any).svc = {
-      getCycle: jest.fn().mockResolvedValue({ id: 'cycle-1', tenantId: 'tenant-1', status: 'open' }),
+      getCycle: jest.fn().mockResolvedValue({
+        id: 'cycle-1',
+        tenantId: 'tenant-1',
+        status: 'open',
+      }),
       closeCycle: jest.fn().mockResolvedValue({
         id: 'cycle-1',
         tenantId: 'tenant-1',
@@ -77,7 +97,9 @@ describe('SettlementCyclesController', () => {
         totalLiabilityMinor: 100n,
       }),
     };
-    (controller as any).audit = { write: jest.fn().mockResolvedValue(undefined) };
+    (controller as any).audit = {
+      write: jest.fn().mockResolvedValue(undefined),
+    };
 
     const req = {
       admin: {
@@ -92,7 +114,11 @@ describe('SettlementCyclesController', () => {
       headers: {},
     };
 
-    const result = await (controller as any).close('cycle-1', { note: 'close it' }, req);
+    const result = await (controller as any).close(
+      'cycle-1',
+      { note: 'close it' },
+      req,
+    );
 
     expect((controller as any).svc.closeCycle).toHaveBeenCalledWith({
       id: 'cycle-1',
@@ -100,11 +126,15 @@ describe('SettlementCyclesController', () => {
       note: 'close it',
     });
     expect((controller as any).audit.write).toHaveBeenCalled();
-    expect(result).toEqual(expect.objectContaining({ id: 'cycle-1', status: 'closed' }));
+    expect(result).toEqual(
+      expect.objectContaining({ id: 'cycle-1', status: 'closed' }),
+    );
   });
 
   it('throws when settlement cycle detail is missing', async () => {
     (controller as any).svc = { getCycle: jest.fn().mockResolvedValue(null) };
-    await expect((controller as any).detail('missing')).rejects.toBeInstanceOf(NotFoundException);
+    await expect((controller as any).detail('missing')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });

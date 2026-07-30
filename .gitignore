@@ -9,3 +9,9 @@ dist
 .turbo
 coverage
 .hermes/
+*.tsbuildinfo
+/backups/
+/migration-bundles/
+*.age
+rabbitmq-definitions*.json
+rabbitmq-definitions*.json.sha256

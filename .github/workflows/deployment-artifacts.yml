@@ -1,0 +1,40 @@
+name: deployment-artifacts
+
+on:
+  push:
+    tags: ['uprm-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-public-artifacts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse private runtime artifacts
+        run: |
+          test ! -f .env
+          if find . -path './node_modules' -prune -o \( -name '*.dump' -o -name '*.age' -o -name 'rabbitmq-definitions*.json' \) -print | grep -q .; then
+            echo 'private runtime artifact matched release package filters' >&2
+            exit 1
+          fi
+      - name: Build deployment artifact archive
+        run: |
+          mkdir -p dist-artifacts
+          tar --sort=name --owner=0 --group=0 --numeric-owner \
+            --exclude='.git' \
+            --exclude='.env' \
+            --exclude='*.age' \
+            --exclude='*.dump' \
+            --exclude='rabbitmq-definitions*.json' \
+            -czf dist-artifacts/uprm-deployment-artifacts.tar.gz \
+            README.md TESTING.md .env.example package.json pnpm-lock.yaml \
+            docs/deployment docs/plans infra/docker infra/systemd infra/caddy scripts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uprm-deployment-artifacts
+          path: dist-artifacts/uprm-deployment-artifacts.tar.gz
+          if-no-files-found: error

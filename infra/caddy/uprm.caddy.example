@@ -1,0 +1,22 @@
+# Replace the placeholder with the production hostname before installation.
+# Caddy obtains and renews TLS certificates automatically after DNS points here.
+__UPRM_HOSTNAME__ {
+	encode zstd gzip
+
+	@tenant_api path /v1/*
+	reverse_proxy @tenant_api 127.0.0.1:4000
+
+	# Admin API also serves the built React administration console.
+	reverse_proxy 127.0.0.1:4001
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

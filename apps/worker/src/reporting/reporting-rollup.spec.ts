@@ -1,28 +1,39 @@
+import type { ReportingService } from '@uprm/reporting';
 import { ReportingRollupRunner } from './reporting-rollup';
 
-describe('ReportingRollupRunner', () => {
-  it('rebuilds analytics for every tenant and updates metrics', async () => {
-    const runner = new ReportingRollupRunner({
-      intervalMs: 1_000,
-      lookbackDays: 90,
-    } as any);
+const findMany = jest.fn<Promise<Array<{ id: string }>>, []>();
+const rebuildAll = jest.fn<
+  ReturnType<ReportingService['rebuildAll']>,
+  Parameters<ReportingService['rebuildAll']>
+>();
 
-    (runner as any).db = {
-      tenant: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([{ id: 'tenant-1' }, { id: 'tenant-2' }]),
-      },
-    };
-    (runner as any).reporting = {
-      rebuildAll: jest.fn().mockResolvedValue(undefined),
-    };
+function makeRunner(): ReportingRollupRunner {
+  return new ReportingRollupRunner(
+    { intervalMs: 1_000, lookbackDays: 90 },
+    {
+      db: { tenant: { findMany } },
+      reporting: { rebuildAll },
+    },
+  );
+}
+
+describe('ReportingRollupRunner', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('rebuilds analytics for every tenant and updates metrics', async () => {
+    const runner = makeRunner();
+    findMany.mockResolvedValue([{ id: 'tenant-1' }, { id: 'tenant-2' }]);
+    rebuildAll.mockResolvedValue(
+      {} as Awaited<ReturnType<ReportingService['rebuildAll']>>,
+    );
 
     await runner.runOnce();
 
-    expect((runner as any).db.tenant.findMany).toHaveBeenCalled();
-    expect((runner as any).reporting.rebuildAll).toHaveBeenCalledTimes(2);
-    expect((runner as any).reporting.rebuildAll).toHaveBeenNthCalledWith(
+    expect(findMany).toHaveBeenCalled();
+    expect(rebuildAll).toHaveBeenCalledTimes(2);
+    expect(rebuildAll).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ tenantId: 'tenant-1' }),
     );
@@ -32,19 +43,9 @@ describe('ReportingRollupRunner', () => {
   });
 
   it('counts failures without throwing the loop away', async () => {
-    const runner = new ReportingRollupRunner({
-      intervalMs: 1_000,
-      lookbackDays: 90,
-    } as any);
-
-    (runner as any).db = {
-      tenant: {
-        findMany: jest.fn().mockResolvedValue([{ id: 'tenant-1' }]),
-      },
-    };
-    (runner as any).reporting = {
-      rebuildAll: jest.fn().mockRejectedValue(new Error('boom')),
-    };
+    const runner = makeRunner();
+    findMany.mockResolvedValue([{ id: 'tenant-1' }]);
+    rebuildAll.mockRejectedValue(new Error('boom'));
 
     await expect(runner.runOnce()).resolves.toBeUndefined();
     expect(runner.metrics.rollups).toBe(0);
